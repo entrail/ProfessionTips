@@ -239,11 +239,24 @@ local function AddProfessionLines(tooltip, prof, itemId)
     local candidates, isReagent, range = GatherCandidates(prof, itemId, skill, onlyLearned)
     if not isReagent then return end
 
+    -- Emphasizes the just-added line's left text with the tooltip header
+    -- font ("bold"). Tooltip fontstrings are recycled between tooltips, so
+    -- the module tracks them and resets the font on OnTooltipCleared.
+    local function EmphasizeLastLine()
+        local fs = _G[tooltip:GetName() .. "TextLeft" .. tooltip:NumLines()]
+        if fs then
+            fs:SetFontObject(GameTooltipHeaderText)
+            tooltip.professionTipsHeaderFS = tooltip.professionTipsHeaderFS or {}
+            tinsert(tooltip.professionTipsHeaderFS, fs)
+        end
+    end
+
     if #candidates == 0 then
         -- Every recipe using this item is gray: one clear "sell it" line.
         tooltip:AddDoubleLine(
             ("|c%s%s|r"):format(DIFFICULTY_COLOR.gray, prof.name),
             ("|c%s%s|r"):format(DIFFICULTY_COLOR.gray, L["no skillups"]))
+        EmphasizeLastLine()
         tooltip:Show()
         return
     end
@@ -258,6 +271,7 @@ local function AddProfessionLines(tooltip, prof, itemId)
     end
     tooltip:AddDoubleLine(header,
         FormatScale(range.orange, range.yellow, range.green, range.gray))
+    EmphasizeLastLine()
 
     -- maxLines 0 = professions-only mode (just the header rows).
     -- 1 acts as 2: with any recipes shown, the lowest- and the
@@ -348,6 +362,21 @@ ns.OnInit(function()
         end
     end)
 
+    -- Runs for both tooltip API paths: resets the "bold" header fonts
+    -- (tooltip line fontstrings are recycled) and the duplicate guard.
+    local function OnCleared(tooltip)
+        tooltip.professionTipsDone = nil
+        local list = tooltip.professionTipsHeaderFS
+        if list then
+            for i = #list, 1, -1 do
+                list[i]:SetFontObject(GameTooltipText)
+                list[i] = nil
+            end
+        end
+    end
+    GameTooltip:HookScript("OnTooltipCleared", OnCleared)
+    ItemRefTooltip:HookScript("OnTooltipCleared", OnCleared)
+
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
         and Enum.TooltipDataType and Enum.TooltipDataType.Item then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, HandleTooltip)
@@ -359,12 +388,7 @@ ns.OnInit(function()
             tooltip.professionTipsDone = true
             HandleTooltip(tooltip)
         end
-        local function OnCleared(tooltip)
-            tooltip.professionTipsDone = nil
-        end
         GameTooltip:HookScript("OnTooltipSetItem", OnSetItem)
-        GameTooltip:HookScript("OnTooltipCleared", OnCleared)
         ItemRefTooltip:HookScript("OnTooltipSetItem", OnSetItem)
-        ItemRefTooltip:HookScript("OnTooltipCleared", OnCleared)
     end
 end)
