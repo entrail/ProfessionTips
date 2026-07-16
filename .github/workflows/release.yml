@@ -1,0 +1,29 @@
+# Packages the addon and uploads it to CurseForge whenever a version tag
+# (v1.0.0, v1.1.0, ...) is pushed. Works with a private repository because
+# everything runs inside GitHub Actions; CurseForge only receives the
+# finished zip via its upload API.
+#
+# Required repository secret: CF_API_KEY
+#   (authors.curseforge.com -> account -> My API Tokens)
+# Required toc entry: ## X-Curse-Project-ID: <project id>
+#   (visible on the CurseForge project page once created)
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}

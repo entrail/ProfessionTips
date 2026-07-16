@@ -1,0 +1,21 @@
+## Interface: 11507
+## Title: ProfessionTips
+## Notes: Reagent tooltips: which recipes use an item, the skill range that still gives points, and whether you know the recipe.
+## Author: Adrian
+## Version: 1.0.0
+## SavedVariables: ProfessionTipsDB
+# TODO before first release: create the CurseForge project, then add its id:
+# ## X-Curse-Project-ID: 000000
+
+Core.lua
+Data\Vanilla\AlchemyData.lua
+Data\Vanilla\BlacksmithingData.lua
+Data\Vanilla\CookingData.lua
+Data\Vanilla\EnchantingData.lua
+Data\Vanilla\EngineeringData.lua
+Data\Vanilla\FirstAidData.lua
+Data\Vanilla\LeatherworkingData.lua
+Data\Vanilla\SmeltingData.lua
+Data\Vanilla\TailoringData.lua
+Options.lua
+ProfessionTips.lua
