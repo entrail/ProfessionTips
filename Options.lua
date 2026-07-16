@@ -49,7 +49,7 @@ ns.OnInit(function()
                 false
             )
             local learnedInitializer = Settings.CreateCheckbox(category, learnedSetting,
-                L["Consider only recipes this character has already learned; unlearned recipes are ignored completely (recipe lines, skill ranges, 'no skillups')."])
+                L["List only recipes this character has already learned. Unlearned recipes still count for the header's accumulated skill range and the '+N more' summary."])
             learnedInitializer:SetParentInitializer(profInitializer, function()
                 return ns.db[prof.dbKey]
             end)
