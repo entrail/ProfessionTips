@@ -2,7 +2,7 @@
 ## Title: ProfessionTips
 ## Notes: Reagent tooltips: which recipes use an item, the skill range that still gives points, and whether you know the recipe.
 ## Author: Entrail09
-## Version: 1.1.1
+## Version: 1.1.2
 ## SavedVariables: ProfessionTipsDB
 ## X-Curse-Project-ID: 1612251
 
