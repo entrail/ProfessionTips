@@ -22,8 +22,24 @@ local L = ns.L
 -- comparison is localized-vs-localized (profession spell name == skill
 -- line name), which holds on every client language.
 
+-- 0 = professions-only (headers with accumulated ranges, no recipe rows).
+-- 1 makes no sense (lowest and highest recipe are always shown together),
+-- so it acts as 2.
 local function MaxLines()
-    return ns.db.maxLines or 6
+    local v = ns.db.maxLines or 6
+    if v == 1 then v = 2 end
+    return v
+end
+
+-- Optional modifier gate: only add tooltip info while the key is held.
+local MODIFIER_CHECK = {
+    SHIFT = IsShiftKeyDown,
+    CTRL  = IsControlKeyDown,
+    ALT   = IsAltKeyDown,
+}
+local function ModifierOK()
+    local check = MODIFIER_CHECK[ns.db.modifier or "NONE"]
+    return not check or check()
 end
 
 local module = {}
@@ -102,6 +118,17 @@ local function DifficultyAt(skill, recipe)
     else return "orange" end
 end
 
+-- Renders the color-coded breakpoint scale, e.g. "1-44 64 84": guaranteed
+-- skill point per craft while orange, declining chance until the yellow /
+-- green upper bounds. Matters when buying mats: yellow needs ~1-4 per
+-- point, green far more.
+local function FormatScale(orange, yellow, green, gray)
+    return ("|c%s%d-%d|r |c%s%d|r |c%s%d|r"):format(
+        DIFFICULTY_COLOR.orange, orange, yellow - 1,
+        DIFFICULTY_COLOR.yellow, green - 1,
+        DIFFICULTY_COLOR.green, gray - 1)
+end
+
 local function GetSkill(prof)
     prof.name = prof.name or GetSpellInfo(prof.skillSpell)
     for i = 1, GetNumSkillLines() do
@@ -113,24 +140,54 @@ local function GetSkill(prof)
     return nil -- character doesn't have this profession
 end
 
+local playerFaction
+local function PlayerFaction()
+    playerFaction = playerFaction or UnitFactionGroup("player")
+    return playerFaction
+end
+
 -- Collects the recipes of the item AND of everything it can be processed
 -- into. Returns the non-gray candidates ({spellId, via}) sorted by required
--- skill, plus whether the item is a reagent for this profession at all.
-local function GatherCandidates(prof, itemId, skill)
+-- skill, whether the item is a (considered) reagent for this profession at
+-- all, and the ACCUMULATED breakpoint range over all considered recipes:
+-- lowest required skill, but the highest yellow/green/gray bounds - because
+-- while leveling you would always craft whichever recipe has the best color.
+--
+-- Not considered at all: recipes locked to the other faction, and - with
+-- the per-profession "only learned" setting - recipes the character hasn't
+-- learned.
+local function GatherCandidates(prof, itemId, skill, onlyLearned)
     local recipes, index = ns[prof.recipes], ns[prof.byReagent]
-    if not recipes or not index then return nil, false end
+    if not recipes or not index then return nil, false, nil end
 
     local out, seen = {}, {}
     local isReagent = false
+    local range
     local id, via = itemId, nil
     for _ = 1, 5 do -- conversion chains are short; hard depth cap
         local spells = index[id]
         if spells then
-            isReagent = true
             for _, spellId in ipairs(spells) do
-                if not seen[spellId] and skill < recipes[spellId].gray then
+                if not seen[spellId] then
                     seen[spellId] = true
-                    out[#out + 1] = { spellId = spellId, via = via }
+                    local locked = ns.RECIPE_FACTION and ns.RECIPE_FACTION[spellId]
+                    if (not locked or locked == PlayerFaction())
+                        and (not onlyLearned or IsPlayerSpell(spellId)) then
+                        isReagent = true
+                        local r = recipes[spellId]
+                        if not range then
+                            range = { orange = r.orange, yellow = r.yellow,
+                                      green = r.green, gray = r.gray }
+                        else
+                            if r.orange < range.orange then range.orange = r.orange end
+                            if r.yellow > range.yellow then range.yellow = r.yellow end
+                            if r.green  > range.green  then range.green  = r.green  end
+                            if r.gray   > range.gray   then range.gray   = r.gray   end
+                        end
+                        if skill < r.gray then
+                            out[#out + 1] = { spellId = spellId, via = via }
+                        end
+                    end
                 end
             end
         end
@@ -143,7 +200,7 @@ local function GatherCandidates(prof, itemId, skill)
     table.sort(out, function(a, b)
         return recipes[a.spellId].orange < recipes[b.spellId].orange
     end)
-    return out, isReagent
+    return out, isReagent, range
 end
 
 local function AddRecipeLine(tooltip, skill, cand, recipe, hasProfession)
@@ -160,15 +217,8 @@ local function AddRecipeLine(tooltip, skill, cand, recipe, hasProfession)
         left = left .. (" |cffff5050(%s)|r"):format(L["not learned"])
     end
 
-    -- Breakpoint scale, e.g. "1-44 64 84": guaranteed skill point per craft
-    -- while orange, declining chance until the yellow / green upper bounds.
-    -- Matters when buying mats: yellow needs ~1-4 per point, green far more.
-    local right = ("|c%s%d-%d|r |c%s%d|r |c%s%d|r"):format(
-        DIFFICULTY_COLOR.orange, recipe.orange, recipe.yellow - 1,
-        DIFFICULTY_COLOR.yellow, recipe.green - 1,
-        DIFFICULTY_COLOR.green, recipe.gray - 1)
-
-    tooltip:AddDoubleLine(left, right)
+    tooltip:AddDoubleLine(left,
+        FormatScale(recipe.orange, recipe.yellow, recipe.green, recipe.gray))
 end
 
 local function AddProfessionLines(tooltip, prof, itemId)
@@ -183,7 +233,10 @@ local function AddProfessionLines(tooltip, prof, itemId)
         skill = 0
     end
 
-    local candidates, isReagent = GatherCandidates(prof, itemId, skill)
+    -- "Only learned" is meaningless without the profession (nothing is
+    -- learned), so it only applies on characters that have it.
+    local onlyLearned = hasProfession and ns.db[prof.dbKey .. "OnlyLearned"]
+    local candidates, isReagent, range = GatherCandidates(prof, itemId, skill, onlyLearned)
     if not isReagent then return end
 
     if #candidates == 0 then
@@ -195,54 +248,75 @@ local function AddProfessionLines(tooltip, prof, itemId)
         return
     end
 
-    -- Pick at most maxLines: always the lowest- and highest-requirement
-    -- recipes (they mark the material's full useful span), then fill the
-    -- remaining slots preferring recipes the character already knows.
+    -- Section header: profession name + current skill on the left, the
+    -- material's ACCUMULATED skill range on the right.
+    local header
+    if hasProfession then
+        header = ("|cffffd100%s (%d)|r"):format(prof.name, skill)
+    else
+        header = ("|cffffd100%s|r"):format(prof.name)
+    end
+    tooltip:AddDoubleLine(header,
+        FormatScale(range.orange, range.yellow, range.green, range.gray))
+
+    -- maxLines 0 = professions-only mode (just the header rows).
+    -- 1 acts as 2: with any recipes shown, the lowest- and the
+    -- highest-requirement one always appear together.
     local recipes = ns[prof.recipes]
     local maxLines = MaxLines()
-    local show = candidates
-    if #candidates > maxLines then
-        show = {}
-        local picked = {}
-        local function pick(cand)
-            if not picked[cand] and #show < maxLines then
-                picked[cand] = true
-                show[#show + 1] = cand
+    if maxLines > 0 then
+        local show = candidates
+        if #candidates > maxLines then
+            show = {}
+            local picked = {}
+            local function pick(cand)
+                if not picked[cand] and #show < maxLines then
+                    picked[cand] = true
+                    show[#show + 1] = cand
+                end
             end
+            pick(candidates[1])           -- lowest required skill
+            pick(candidates[#candidates]) -- highest required skill
+            -- Middle slots: recipes usable at the current skill first
+            -- (learned before unlearned, highest requirement first - the
+            -- ones just below the skill are the best training value);
+            -- then not-yet-usable ones, nearest requirement first.
+            local rest = {}
+            for _, cand in ipairs(candidates) do rest[#rest + 1] = cand end
+            table.sort(rest, function(a, b)
+                local ra, rb = recipes[a.spellId], recipes[b.spellId]
+                local ua, ub = ra.orange <= skill, rb.orange <= skill
+                if ua ~= ub then return ua end
+                if ua then
+                    if hasProfession then
+                        local la = IsPlayerSpell(a.spellId)
+                        local lb = IsPlayerSpell(b.spellId)
+                        if la ~= lb then return la end
+                    end
+                    return ra.orange > rb.orange
+                end
+                return ra.orange < rb.orange
+            end)
+            for _, cand in ipairs(rest) do pick(cand) end
+            table.sort(show, function(a, b)
+                return recipes[a.spellId].orange < recipes[b.spellId].orange
+            end)
         end
-        pick(candidates[1])           -- lowest required skill
-        pick(candidates[#candidates]) -- highest required skill
-        if hasProfession then
-            for _, cand in ipairs(candidates) do
-                if IsPlayerSpell(cand.spellId) then pick(cand) end
-            end
-        end
-        for _, cand in ipairs(candidates) do
-            pick(cand)
-        end
-        table.sort(show, function(a, b)
-            return recipes[a.spellId].orange < recipes[b.spellId].orange
-        end)
-    end
 
-    -- Section header: profession name + current skill.
-    if hasProfession then
-        tooltip:AddLine(("|cffffd100%s (%d)|r"):format(prof.name, skill))
-    else
-        tooltip:AddLine(("|cffffd100%s|r"):format(prof.name))
-    end
-    for _, cand in ipairs(show) do
-        AddRecipeLine(tooltip, skill, cand, recipes[cand.spellId], hasProfession)
-    end
-    local hidden = #candidates - #show
-    if hidden > 0 then
-        tooltip:AddLine(("  |cff9d9d9d+%d|r "):format(hidden) .. L["more recipes give points"])
+        for _, cand in ipairs(show) do
+            AddRecipeLine(tooltip, skill, cand, recipes[cand.spellId], hasProfession)
+        end
+        local hidden = #candidates - #show
+        if hidden > 0 then
+            tooltip:AddLine(("  |cff9d9d9d+%d|r "):format(hidden) .. L["more recipes give points"])
+        end
     end
     tooltip:Show() -- recalculate tooltip size for the added lines
 end
 
 local function HandleTooltip(tooltip, data)
     if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+    if not ModifierOK() then return end
     local itemId = data and data.id
     if not itemId and tooltip.GetItem then
         local _, link = tooltip:GetItem()
@@ -255,6 +329,25 @@ local function HandleTooltip(tooltip, data)
 end
 
 ns.OnInit(function()
+    -- With a modifier configured, pressing/releasing it while already
+    -- hovering should update the tooltip: re-run the owner's OnEnter so
+    -- the tooltip is rebuilt (and our post-call runs again).
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("MODIFIER_STATE_CHANGED")
+    events:SetScript("OnEvent", function()
+        if (ns.db.modifier or "NONE") == "NONE" then return end
+        if not GameTooltip:IsShown() then return end
+        local owner = GameTooltip:GetOwner()
+        if not owner or not GameTooltip.GetItem then return end
+        local _, link = GameTooltip:GetItem()
+        if not link then return end
+        local onEnter = owner:GetScript("OnEnter")
+        if onEnter then
+            GameTooltip:Hide()
+            onEnter(owner, true)
+        end
+    end)
+
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
         and Enum.TooltipDataType and Enum.TooltipDataType.Item then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, HandleTooltip)

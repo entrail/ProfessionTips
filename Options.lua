@@ -25,7 +25,47 @@ ns.OnInit(function()
             )
             Settings.CreateCheckbox(category, setting,
                 L["Adds this profession's recipes an item is used in to its tooltip, with the skill range that still gives points and whether you know the recipe."])
+
+            -- Per-profession noise filter, hidden while the profession row
+            -- above is disabled.
+            local learnedKey = prof.dbKey .. "OnlyLearned"
+            local learnedSetting = Settings.RegisterAddOnSetting(
+                category,
+                "ProfessionTips_" .. learnedKey,
+                learnedKey,
+                ns.db,
+                Settings.VarType.Boolean,
+                format(L["%s: only learned recipes"], profName),
+                false
+            )
+            local initializer = Settings.CreateCheckbox(category, learnedSetting,
+                L["Consider only recipes this character has already learned; unlearned recipes are ignored completely (recipe lines, skill ranges, 'no skillups')."])
+            initializer:AddShownPredicate(function()
+                return ns.db[prof.dbKey]
+            end)
         end
+    end
+
+    do
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            "ProfessionTips_Modifier",
+            "modifier",
+            ns.db,
+            Settings.VarType.String,
+            L["Show only while holding"],
+            "NONE"
+        )
+        local function GetOptions()
+            local options = Settings.CreateControlTextContainer()
+            options:Add("NONE", L["Always show"])
+            options:Add("SHIFT", SHIFT_KEY_TEXT or "Shift")
+            options:Add("CTRL", CTRL_KEY_TEXT or "Ctrl")
+            options:Add("ALT", ALT_KEY_TEXT or "Alt")
+            return options:GetData()
+        end
+        Settings.CreateDropdown(category, setting, GetOptions,
+            L["Only add the tooltip information while this modifier key is held down."])
     end
 
     do
@@ -38,10 +78,14 @@ ns.OnInit(function()
             L["Recipes listed per profession"],
             6
         )
-        local options = Settings.CreateSliderOptions(2, 8, 1)
-        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
+        local options = Settings.CreateSliderOptions(0, 8, 1)
+        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
+            if value == 0 then return L["0 (professions only)"] end
+            if value == 1 then return "2" end -- 1 acts as 2 (lowest+highest pair)
+            return tostring(value)
+        end)
         Settings.CreateSlider(category, setting, options,
-            L["Maximum number of recipe lines per profession section. Recipes beyond the limit are summarized as '+N more recipes give points'."])
+            L["Recipe lines per profession section. 0 shows only the profession headers with their accumulated skill range; otherwise at least 2 (the lowest- and highest-requirement recipes always appear together). More recipes are summarized as '+N more'."])
     end
 
     do
