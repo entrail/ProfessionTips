@@ -4,8 +4,7 @@
 ## Author: Adrian
 ## Version: 1.0.0
 ## SavedVariables: ProfessionTipsDB
-# TODO before first release: create the CurseForge project, then add its id:
-# ## X-Curse-Project-ID: 000000
+## X-Curse-Project-ID: 1612251
 
 Core.lua
 Data\Vanilla\AlchemyData.lua
