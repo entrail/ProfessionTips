@@ -47,7 +47,7 @@ First Aid (210)                      150-239 269 299
 - Works on **every client language** (all matching is by ID).
 - Configurable in Settings -> Options -> AddOns -> ProfessionTips
   (or `/proftips`): per-profession toggles and learned-only filters, lines
-  per section (0 = professions only, else 2-8), modifier key, processed
+  per section (0 = professions only, else 2-25), modifier key, processed
   materials, missing professions.
 
 ## Notes
