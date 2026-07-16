@@ -20,7 +20,7 @@ local defaults = {
     leatherworking = true,
     mining = true,        -- smelting
     tailoring = true,
-    maxLines = 6,         -- recipe lines per profession section (0 = headers only, else 2-8)
+    maxLines = 6,         -- recipe lines per profession section (0 = headers only, else 2-25)
     showMissing = false,  -- also annotate professions this character lacks
     includeProcessed = true, -- follow cloth->bolt / ore->bar conversions
     modifier = "NONE",    -- only show while holding NONE/SHIFT/CTRL/ALT
