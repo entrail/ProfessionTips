@@ -71,7 +71,7 @@ ns.OnInit(function()
             L["Recipes listed per profession"],
             6
         )
-        local options = Settings.CreateSliderOptions(0, 25, 1)
+        local options = Settings.CreateSliderOptions(0, 35, 1)
         options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
             if value == 0 then return L["0 (professions only)"] end
             if value == 1 then return "2" end -- 1 acts as 2 (lowest+highest pair)
