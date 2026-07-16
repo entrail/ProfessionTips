@@ -2,14 +2,24 @@ local ADDON_NAME, ns = ...
 local L = ns.L
 
 -- Settings under Settings -> Options -> AddOns using the modern Settings
--- API. One checkbox per profession that has recipe data on this game
--- flavor, plus the shared display options. All settings apply immediately
--- (tooltips read them live), so no refresh callbacks are needed.
+-- API, grouped into sections: Professions (one checkbox per profession
+-- with data on this game flavor, each with an indented "only learned"
+-- child row), Display (shared behavior options), About. All settings apply
+-- immediately (tooltips read them live), so no refresh callbacks needed.
 
 ns.OnInit(function()
     local category, layout = Settings.RegisterVerticalLayoutCategory(ADDON_NAME)
     category.ID = ADDON_NAME
     ns.settingsCategory = category
+
+    local function AddHeader(text)
+        layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(text))
+    end
+
+    -- ----------------------------------------------------------------
+    -- Professions
+    -- ----------------------------------------------------------------
+    AddHeader(L["Professions"])
 
     for _, prof in ipairs(ns.ProfessionTips.PROFESSIONS) do
         if ns[prof.recipes] then -- only professions with data on this flavor
@@ -20,14 +30,14 @@ ns.OnInit(function()
                 prof.dbKey,
                 ns.db,
                 Settings.VarType.Boolean,
-                format(L["%s reagent tooltips"], profName),
+                profName,
                 true
             )
-            Settings.CreateCheckbox(category, setting,
+            local profInitializer = Settings.CreateCheckbox(category, setting,
                 L["Adds this profession's recipes an item is used in to its tooltip, with the skill range that still gives points and whether you know the recipe."])
 
-            -- Per-profession noise filter, hidden while the profession row
-            -- above is disabled.
+            -- Child row: indented under the profession and greyed out while
+            -- the profession is disabled (native dependent-option look).
             local learnedKey = prof.dbKey .. "OnlyLearned"
             local learnedSetting = Settings.RegisterAddOnSetting(
                 category,
@@ -35,15 +45,40 @@ ns.OnInit(function()
                 learnedKey,
                 ns.db,
                 Settings.VarType.Boolean,
-                format(L["%s: only learned recipes"], profName),
+                L["Only learned recipes"],
                 false
             )
-            local initializer = Settings.CreateCheckbox(category, learnedSetting,
+            local learnedInitializer = Settings.CreateCheckbox(category, learnedSetting,
                 L["Consider only recipes this character has already learned; unlearned recipes are ignored completely (recipe lines, skill ranges, 'no skillups')."])
-            initializer:AddShownPredicate(function()
+            learnedInitializer:SetParentInitializer(profInitializer, function()
                 return ns.db[prof.dbKey]
             end)
         end
+    end
+
+    -- ----------------------------------------------------------------
+    -- Display
+    -- ----------------------------------------------------------------
+    AddHeader(L["Display"])
+
+    do
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            "ProfessionTips_MaxLines",
+            "maxLines",
+            ns.db,
+            Settings.VarType.Number,
+            L["Recipes listed per profession"],
+            6
+        )
+        local options = Settings.CreateSliderOptions(0, 8, 1)
+        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
+            if value == 0 then return L["0 (professions only)"] end
+            if value == 1 then return "2" end -- 1 acts as 2 (lowest+highest pair)
+            return tostring(value)
+        end)
+        Settings.CreateSlider(category, setting, options,
+            L["Recipe lines per profession section. 0 shows only the profession headers with their accumulated skill range; otherwise at least 2 (the lowest- and highest-requirement recipes always appear together). More recipes are summarized as '+N more'."])
     end
 
     do
@@ -71,21 +106,15 @@ ns.OnInit(function()
     do
         local setting = Settings.RegisterAddOnSetting(
             category,
-            "ProfessionTips_MaxLines",
-            "maxLines",
+            "ProfessionTips_IncludeProcessed",
+            "includeProcessed",
             ns.db,
-            Settings.VarType.Number,
-            L["Recipes listed per profession"],
-            6
+            Settings.VarType.Boolean,
+            L["Include processed materials"],
+            true
         )
-        local options = Settings.CreateSliderOptions(0, 8, 1)
-        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
-            if value == 0 then return L["0 (professions only)"] end
-            if value == 1 then return "2" end -- 1 acts as 2 (lowest+highest pair)
-            return tostring(value)
-        end)
-        Settings.CreateSlider(category, setting, options,
-            L["Recipe lines per profession section. 0 shows only the profession headers with their accumulated skill range; otherwise at least 2 (the lowest- and highest-requirement recipes always appear together). More recipes are summarized as '+N more'."])
+        Settings.CreateCheckbox(category, setting,
+            L["Raw materials also show the recipes of what they are processed into (cloth into bolts, ore into bars, hides into cured hides, ...), marked with 'via'."])
     end
 
     do
@@ -102,22 +131,10 @@ ns.OnInit(function()
             L["Also annotates reagents of professions this character does not have (as if at skill 0) - useful to decide what to keep or send to alts."])
     end
 
-    do
-        local setting = Settings.RegisterAddOnSetting(
-            category,
-            "ProfessionTips_IncludeProcessed",
-            "includeProcessed",
-            ns.db,
-            Settings.VarType.Boolean,
-            L["Include processed materials"],
-            true
-        )
-        Settings.CreateCheckbox(category, setting,
-            L["Raw materials also show the recipes of what they are processed into (cloth into bolts, ore into bars, hides into cured hides, ...), marked with 'via'."])
-    end
-
+    -- ----------------------------------------------------------------
     -- About
-    layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["About"]))
+    -- ----------------------------------------------------------------
+    AddHeader(L["About"])
     local function AddAboutLine(text)
         layout:AddInitializer(Settings.CreateElementInitializer(
             "ProfessionTipsSettingsTextTemplate", { name = text }))
