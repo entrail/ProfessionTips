@@ -1,12 +1,13 @@
-## Interface: 11507
+## Interface: 11508
 ## Title: ProfessionTips
 ## Notes: Reagent tooltips: which recipes use an item, the skill range that still gives points, and whether you know the recipe.
-## Author: Adrian
+## Author: Entrail09
 ## Version: 1.0.0
 ## SavedVariables: ProfessionTipsDB
 ## X-Curse-Project-ID: 1612251
 
 Core.lua
+Templates.xml
 Data\Vanilla\AlchemyData.lua
 Data\Vanilla\BlacksmithingData.lua
 Data\Vanilla\CookingData.lua

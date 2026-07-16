@@ -53,9 +53,9 @@ Same code, per-flavor data:
    wago.tools (recipes changed vs vanilla: new 300-375 recipes, adjusted
    breakpoints on some old ones) + `JewelcraftingData.lua`.
 2. Add flavor-suffixed toc files: `ProfessionTips_Vanilla.toc` (Interface
-   11507, loads Data/Vanilla) and `ProfessionTips_TBC.toc` (TBC interface
-   number, loads Data/TBC). The clients pick the right toc automatically;
-   the plain `ProfessionTips.toc` then serves as fallback.
+   11508, loads Data/Vanilla) and `ProfessionTips_TBC.toc` (Interface
+   20506 as of July 2026, loads Data/TBC). The clients pick the right toc
+   automatically; the plain `ProfessionTips.toc` then serves as fallback.
 3. Code is already flavor-agnostic: the PROFESSIONS list includes
    Jewelcrafting (skillSpell 25229), and both the tooltip module and the
    options panel skip professions whose data tables are not loaded.

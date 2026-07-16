@@ -72,6 +72,15 @@ ns.OnInit(function()
             L["Raw materials also show the recipes of what they are processed into (cloth into bolts, ore into bars, hides into cured hides, ...), marked with 'via'."])
     end
 
+    -- About
+    layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["About"]))
+    local function AddAboutLine(text)
+        layout:AddInitializer(Settings.CreateElementInitializer(
+            "ProfessionTipsSettingsTextTemplate", { name = text }))
+    end
+    AddAboutLine(format(L["Author: %s"], "Entrail09"))
+    AddAboutLine(format(L["Version: %s"], ns.version or "?"))
+
     Settings.RegisterAddOnCategory(category)
 end)
 
