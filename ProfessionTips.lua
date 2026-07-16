@@ -162,6 +162,7 @@ local function GatherCandidates(prof, itemId, skill)
 
     local out, seen = {}, {}
     local anyRecipe, anyAvailable = false, false
+    local lockedTo -- faction of excluded recipes (always the opposite one)
     local range
     local id, via = itemId, nil
     for _ = 1, 5 do -- conversion chains are short; hard depth cap
@@ -172,7 +173,9 @@ local function GatherCandidates(prof, itemId, skill)
                     seen[spellId] = true
                     anyRecipe = true
                     local locked = ns.RECIPE_FACTION and ns.RECIPE_FACTION[spellId]
-                    if not locked or locked == PlayerFaction() then
+                    if locked and locked ~= PlayerFaction() then
+                        lockedTo = locked
+                    else
                         anyAvailable = true
                         local r = recipes[spellId]
                         if not range then
@@ -200,7 +203,7 @@ local function GatherCandidates(prof, itemId, skill)
     table.sort(out, function(a, b)
         return recipes[a.spellId].orange < recipes[b.spellId].orange
     end)
-    return out, anyRecipe, anyAvailable, range
+    return out, anyRecipe, anyAvailable, range, lockedTo
 end
 
 local function AddRecipeLine(tooltip, skill, cand, recipe, hasProfession)
@@ -233,7 +236,7 @@ local function AddProfessionLines(tooltip, prof, itemId)
         skill = 0
     end
 
-    local candidates, anyRecipe, anyAvailable, range = GatherCandidates(prof, itemId, skill)
+    local candidates, anyRecipe, anyAvailable, range, lockedTo = GatherCandidates(prof, itemId, skill)
     if not anyRecipe then return end
 
     -- Emphasizes the just-added line's left text with the tooltip header
@@ -248,11 +251,24 @@ local function AddProfessionLines(tooltip, prof, itemId)
         end
     end
 
-    if not anyAvailable or #candidates == 0 then
-        -- No skillups possible for THIS character: either every recipe
-        -- using the item is gray, or every recipe belongs to the other
-        -- faction. Either way: one clear "sell it" line (never silence -
-        -- the item IS a reagent for this profession).
+    if not anyAvailable then
+        -- Every recipe using this item belongs to the other faction: show
+        -- a faction tag instead of silence (the item IS a reagent, this
+        -- character just can never use it).
+        local color = lockedTo == "Alliance" and "ff4a90e2" or "ffe03e3e"
+        local factionName = lockedTo == "Alliance"
+            and (FACTION_ALLIANCE or "Alliance")
+            or (FACTION_HORDE or "Horde")
+        tooltip:AddDoubleLine(
+            ("|c%s%s|r"):format(DIFFICULTY_COLOR.gray, prof.name),
+            ("|c%s%s|r"):format(color, format(L["%s only"], factionName)))
+        EmphasizeLastLine()
+        tooltip:Show()
+        return
+    end
+
+    if #candidates == 0 then
+        -- Every available recipe is gray: one clear "sell it" line.
         tooltip:AddDoubleLine(
             ("|c%s%s|r"):format(DIFFICULTY_COLOR.gray, prof.name),
             ("|c%s%s|r"):format(DIFFICULTY_COLOR.gray, L["no skillups"]))

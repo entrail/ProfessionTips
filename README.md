@@ -33,10 +33,10 @@ First Aid (210)                      150-239 269 299
   and a per-profession **"only learned recipes"** filter that trims the
   recipe list for huge catalogues (looking at you, Cooking) — the header
   range still shows what's generally possible.
-- **"no skillups"** when nothing using the item can give you points
-  anymore — gray recipes, or recipes locked to the other faction — sell it.
+- **"no skillups"** when every recipe using the item is gray — sell it.
 - **Faction aware**: recipes only obtainable by the other faction never
-  count for your character.
+  count for your character; items used solely by the other faction show a
+  colored "Alliance only" / "Horde only" tag.
 - **Processed materials**: ore also counts its bar recipes, cloth its bolt
   recipes, hides their cured forms — marked "(via Copper Bar)".
 - **Alt planning**: optionally show sections for professions this character
