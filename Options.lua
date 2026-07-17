@@ -145,23 +145,24 @@ ns.OnInit(function()
     Settings.RegisterAddOnCategory(category)
 end)
 
-SLASH_PROFESSIONTIPS1 = "/professiontips"
-SLASH_PROFESSIONTIPS2 = "/proftips"
-SlashCmdList.PROFESSIONTIPS = function()
+local function OpenSettings()
     if ns.settingsCategory then
         Settings.OpenToCategory(ns.settingsCategory:GetID())
     end
 end
 
--- The 2.5.x anniversary client reworked slash-command handling: the chat
--- parser's command hash is no longer rebuilt on every parse, so commands
--- registered the legacy way by addons may never be picked up (works fine
--- on Era 1.15). Register through the new registry when it exists and
--- nudge the hash import as a fallback.
-ns.OnInit(function()
+-- The 2.5.x anniversary client reworked slash-command handling and does
+-- not reliably pick up commands registered at addon load time the legacy
+-- way (works fine on Era 1.15, which re-imports on every parse). Register
+-- the legacy way at load AND re-register late (first PLAYER_ENTERING_
+-- WORLD), additionally going through the new RegisterNewSlashCommand
+-- registry when the client has it.
+local function RegisterSlashes()
+    SLASH_PROFESSIONTIPS1 = "/professiontips"
+    SLASH_PROFESSIONTIPS2 = "/proftips"
+    SlashCmdList.PROFESSIONTIPS = OpenSettings
     if type(RegisterNewSlashCommand) == "function" then
-        pcall(RegisterNewSlashCommand, SlashCmdList.PROFESSIONTIPS,
-            "professiontips", "proftips")
+        pcall(RegisterNewSlashCommand, OpenSettings, "professiontips", "proftips")
     end
     if type(ChatFrame_ImportAllListsToHash) == "function" then
         pcall(ChatFrame_ImportAllListsToHash)
@@ -169,4 +170,13 @@ ns.OnInit(function()
         and type(ChatFrameUtil.ImportAllListsToHash) == "function" then
         pcall(ChatFrameUtil.ImportAllListsToHash)
     end
+end
+
+RegisterSlashes()
+
+local slashEvents = CreateFrame("Frame")
+slashEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+slashEvents:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    RegisterSlashes()
 end)
