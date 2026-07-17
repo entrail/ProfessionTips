@@ -152,3 +152,21 @@ SlashCmdList.PROFESSIONTIPS = function()
         Settings.OpenToCategory(ns.settingsCategory:GetID())
     end
 end
+
+-- The 2.5.x anniversary client reworked slash-command handling: the chat
+-- parser's command hash is no longer rebuilt on every parse, so commands
+-- registered the legacy way by addons may never be picked up (works fine
+-- on Era 1.15). Register through the new registry when it exists and
+-- nudge the hash import as a fallback.
+ns.OnInit(function()
+    if type(RegisterNewSlashCommand) == "function" then
+        pcall(RegisterNewSlashCommand, SlashCmdList.PROFESSIONTIPS,
+            "professiontips", "proftips")
+    end
+    if type(ChatFrame_ImportAllListsToHash) == "function" then
+        pcall(ChatFrame_ImportAllListsToHash)
+    elseif type(ChatFrameUtil) == "table"
+        and type(ChatFrameUtil.ImportAllListsToHash) == "function" then
+        pcall(ChatFrameUtil.ImportAllListsToHash)
+    end
+end)
