@@ -154,6 +154,14 @@ local function OpenSettings()
     -- escape; fall back to telling the player where the settings live.
     pcall(Settings.OpenToCategory, ns.settingsCategory:GetID())
     if SettingsPanel and not SettingsPanel:IsShown() then
+        -- Second attempt: the panel frame's own methods (the C-side opener
+        -- can be blocked while these still work).
+        if SettingsPanel.Open then
+            pcall(SettingsPanel.Open, SettingsPanel)
+            pcall(SettingsPanel.SelectCategory, SettingsPanel, ns.settingsCategory)
+        end
+    end
+    if SettingsPanel and not SettingsPanel:IsShown() then
         print("|cff33ff99ProfessionTips|r: "
             .. L["Could not open the settings window on this client. Find the options under Game Menu -> Options -> AddOns -> ProfessionTips."])
     end
