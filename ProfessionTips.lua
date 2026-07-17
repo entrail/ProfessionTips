@@ -102,6 +102,23 @@ local CONVERSIONS = {
     [4235]  = 4236,  -- Heavy Hide -> Cured Heavy Hide
     [8169]  = 8172,  -- Thick Hide -> Cured Thick Hide
     [8171]  = 15414, -- Rugged Hide -> Cured Rugged Hide
+    -- TBC (ids never occur on Era, so these are inert there)
+    [21877] = 21840, -- Netherweave Cloth -> Bolt of Netherweave
+    [21840] = 21842, -- Bolt of Netherweave -> Bolt of Imbued Netherweave
+    [23424] = 23445, -- Fel Iron Ore -> Fel Iron Bar
+    [23425] = 23446, -- Adamantite Ore -> Adamantite Bar
+    [23446] = 23573, -- Adamantite Bar -> Hardened Adamantite Bar
+    [23427] = 23448, -- Eternium Ore -> Eternium Bar
+    [23426] = 23447, -- Khorium Ore -> Khorium Bar
+    [25649] = 21887, -- Knothide Leather Scraps -> Knothide Leather
+    -- motes -> primals (10:1, the primal is the common reagent)
+    [22572] = 22451, -- Mote of Air -> Primal Air
+    [22573] = 22452, -- Mote of Earth -> Primal Earth
+    [22574] = 21884, -- Mote of Fire -> Primal Fire
+    [22575] = 21886, -- Mote of Life -> Primal Life
+    [22576] = 22457, -- Mote of Mana -> Primal Mana
+    [22577] = 22456, -- Mote of Shadow -> Primal Shadow
+    [22578] = 21885, -- Mote of Water -> Primal Water
 }
 
 local DIFFICULTY_COLOR = {

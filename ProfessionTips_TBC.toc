@@ -1,4 +1,4 @@
-## Interface: 11508
+## Interface: 20506
 ## Title: ProfessionTips
 ## Notes: Reagent tooltips: which recipes use an item, the skill range that still gives points, and whether you know the recipe.
 ## Author: Entrail09
@@ -8,15 +8,16 @@
 
 Core.lua
 Templates.xml
-Data\Vanilla\AlchemyData.lua
-Data\Vanilla\BlacksmithingData.lua
-Data\Vanilla\CookingData.lua
-Data\Vanilla\EnchantingData.lua
-Data\Vanilla\EngineeringData.lua
-Data\Vanilla\FirstAidData.lua
-Data\Vanilla\LeatherworkingData.lua
-Data\Vanilla\SmeltingData.lua
-Data\Vanilla\TailoringData.lua
+Data\TBC\AlchemyData.lua
+Data\TBC\BlacksmithingData.lua
+Data\TBC\CookingData.lua
+Data\TBC\EnchantingData.lua
+Data\TBC\EngineeringData.lua
+Data\TBC\FirstAidData.lua
+Data\TBC\JewelcraftingData.lua
+Data\TBC\LeatherworkingData.lua
+Data\TBC\SmeltingData.lua
+Data\TBC\TailoringData.lua
 Data\FactionData.lua
 Options.lua
 ProfessionTips.lua
