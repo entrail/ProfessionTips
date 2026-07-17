@@ -144,6 +144,9 @@ local function OpenSettings()
     InterfaceOptionsFrame_OpenToCategory(ns.settingsCategory)
 end
 
-SLASH_PROFESSIONTIPS1 = "/professiontips"
-SLASH_PROFESSIONTIPS2 = "/proftips"
+-- Register each alias under its own key. Some 3.3.5a clients/importers only
+-- index the first alias reliably when an addon defines a numbered alias list.
+SLASH_PROFESSIONTIPS1 = "/proftips"
 SlashCmdList.PROFESSIONTIPS = OpenSettings
+SLASH_PROFESSIONTIPSLONG1 = "/professiontips"
+SlashCmdList.PROFESSIONTIPSLONG = OpenSettings

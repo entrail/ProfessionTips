@@ -46,7 +46,9 @@ The separate Wrath options implementation:
   missing-profession toggle;
 - writes directly to the same account-wide `ProfessionTipsDB` settings used by
   the modern clients; and
-- registers the existing `/professiontips` and `/proftips` commands.
+- registers `/professiontips` and `/proftips` under separate legacy command
+  keys because some 3.3.5a command importers do not reliably index a second
+  numbered alias.
 
 Era and TBC continue to load the existing modern `Options.lua` and
 `Templates.xml` implementation.
