@@ -146,8 +146,16 @@ ns.OnInit(function()
 end)
 
 local function OpenSettings()
-    if ns.settingsCategory then
-        Settings.OpenToCategory(ns.settingsCategory:GetID())
+    if not ns.settingsCategory then return end
+    -- On the 2.5.x anniversary client, opening the settings panel from
+    -- addon code can be blocked (newest-codebase UI protection). An error
+    -- here would also leave the typed slash command stuck in the chat
+    -- edit box (the clear happens after the handler), so never let it
+    -- escape; fall back to telling the player where the settings live.
+    pcall(Settings.OpenToCategory, ns.settingsCategory:GetID())
+    if SettingsPanel and not SettingsPanel:IsShown() then
+        print("|cff33ff99ProfessionTips|r: "
+            .. L["Could not open the settings window on this client. Find the options under Game Menu -> Options -> AddOns -> ProfessionTips."])
     end
 end
 
