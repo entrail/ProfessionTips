@@ -4,7 +4,8 @@
 
 ProfessionTips adds a small section to the tooltip of every crafting
 material, telling you at a glance whether it can still level your
-professions — for WoW Classic Era / Anniversary / Hardcore.
+professions — for WoW Classic Era / Hardcore and TBC Anniversary
+(including Jewelcrafting).
 
 ```
 Tailoring (137)                      125-199 214 229
