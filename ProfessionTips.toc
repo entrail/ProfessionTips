@@ -1,22 +1,22 @@
-## Interface: 11508
+## Interface: 30300
 ## Title: ProfessionTips
-## Notes: Reagent tooltips: which recipes use an item, the skill range that still gives points, and whether you know the recipe.
+## Notes: Reagent tooltips for Classic and Burning Crusade recipes through skill 375. Wrath recipe data is not yet included.
 ## Author: Entrail09
 ## Version: 1.2.0
 ## SavedVariables: ProfessionTipsDB
 ## X-Curse-Project-ID: 1612251
 
 Core.lua
-Templates.xml
-Data\Vanilla\AlchemyData.lua
-Data\Vanilla\BlacksmithingData.lua
-Data\Vanilla\CookingData.lua
-Data\Vanilla\EnchantingData.lua
-Data\Vanilla\EngineeringData.lua
-Data\Vanilla\FirstAidData.lua
-Data\Vanilla\LeatherworkingData.lua
-Data\Vanilla\SmeltingData.lua
-Data\Vanilla\TailoringData.lua
+Data\TBC\AlchemyData.lua
+Data\TBC\BlacksmithingData.lua
+Data\TBC\CookingData.lua
+Data\TBC\EnchantingData.lua
+Data\TBC\EngineeringData.lua
+Data\TBC\FirstAidData.lua
+Data\TBC\JewelcraftingData.lua
+Data\TBC\LeatherworkingData.lua
+Data\TBC\SmeltingData.lua
+Data\TBC\TailoringData.lua
 Data\FactionData.lua
-Options.lua
+Options_Wrath.lua
 ProfessionTips.lua
