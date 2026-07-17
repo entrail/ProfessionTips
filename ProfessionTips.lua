@@ -108,8 +108,8 @@ local CONVERSIONS = {
     [23424] = 23445, -- Fel Iron Ore -> Fel Iron Bar
     [23425] = 23446, -- Adamantite Ore -> Adamantite Bar
     [23446] = 23573, -- Adamantite Bar -> Hardened Adamantite Bar
-    [23427] = 23448, -- Eternium Ore -> Eternium Bar
-    [23426] = 23447, -- Khorium Ore -> Khorium Bar
+    [23427] = 23447, -- Eternium Ore -> Eternium Bar
+    [23426] = 23449, -- Khorium Ore -> Khorium Bar
     [25649] = 21887, -- Knothide Leather Scraps -> Knothide Leather
     -- motes -> primals (10:1, the primal is the common reagent)
     [22572] = 22451, -- Mote of Air -> Primal Air
@@ -140,8 +140,15 @@ end
 -- green upper bounds. Matters when buying mats: yellow needs ~1-4 per
 -- point, green far more.
 local function FormatScale(orange, yellow, green, gray)
-    return ("|c%s%d-%d|r |c%s%d|r |c%s%d|r"):format(
-        DIFFICULTY_COLOR.orange, orange, yellow - 1,
+    -- Recipes that are never orange (orange >= yellow, e.g. TBC flasks)
+    -- start the scale with a single yellow number instead of a range.
+    local first
+    if yellow > orange then
+        first = ("|c%s%d-%d|r"):format(DIFFICULTY_COLOR.orange, orange, yellow - 1)
+    else
+        first = ("|c%s%d|r"):format(DIFFICULTY_COLOR.yellow, orange)
+    end
+    return ("%s |c%s%d|r |c%s%d|r"):format(first,
         DIFFICULTY_COLOR.yellow, green - 1,
         DIFFICULTY_COLOR.green, gray - 1)
 end
