@@ -155,13 +155,33 @@ end
 
 local function GetSkill(prof)
     prof.name = prof.name or GetSpellInfo(prof.skillSpell)
-    for i = 1, GetNumSkillLines() do
-        local name, isHeader, _, rank = GetSkillLineInfo(i)
-        if not isHeader and name == prof.name then
-            return rank
+    -- Classic skill line API (Era 1.15, TBC 2.5): localized-vs-localized
+    -- name match, see header comment.
+    if GetNumSkillLines and GetSkillLineInfo then
+        for i = 1, GetNumSkillLines() do
+            local name, isHeader, _, rank = GetSkillLineInfo(i)
+            if not isHeader and name == prof.name then
+                return rank
+            end
+        end
+        return nil -- character doesn't have this profession
+    end
+    -- Modern fallback (clients without the skill line API):
+    -- GetProfessions returns prof1, prof2, archaeology, fishing, cooking,
+    -- first aid indexes for GetProfessionInfo.
+    if GetProfessions and GetProfessionInfo then
+        local ids = { GetProfessions() }
+        for i = 1, 6 do
+            local id = ids[i]
+            if id then
+                local name, _, rank = GetProfessionInfo(id)
+                if name == prof.name then
+                    return rank
+                end
+            end
         end
     end
-    return nil -- character doesn't have this profession
+    return nil
 end
 
 local playerFaction
@@ -433,18 +453,26 @@ ns.OnInit(function()
     GameTooltip:HookScript("OnTooltipCleared", OnCleared)
     ItemRefTooltip:HookScript("OnTooltipCleared", OnCleared)
 
+    -- Register BOTH tooltip mechanisms with a once-per-tooltip guard:
+    -- some clients expose TooltipDataProcessor but still drive item
+    -- tooltips through the legacy OnTooltipSetItem script (and vice
+    -- versa). Whichever fires first renders; the other no-ops. The guard
+    -- is reset in OnCleared above.
+    local function GuardedHandle(tooltip, data)
+        if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+        if tooltip.professionTipsDone then return end
+        tooltip.professionTipsDone = true
+        HandleTooltip(tooltip, data)
+    end
+
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
         and Enum.TooltipDataType and Enum.TooltipDataType.Item then
-        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, HandleTooltip)
-    else
-        -- Pre-10.0 tooltip API fallback; OnTooltipSetItem can fire twice for
-        -- the same item, hence the cleared-on-hide guard.
-        local function OnSetItem(tooltip)
-            if tooltip.professionTipsDone then return end
-            tooltip.professionTipsDone = true
-            HandleTooltip(tooltip)
-        end
-        GameTooltip:HookScript("OnTooltipSetItem", OnSetItem)
-        ItemRefTooltip:HookScript("OnTooltipSetItem", OnSetItem)
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, GuardedHandle)
     end
+    -- HookScript errors on clients whose GameTooltip lacks the legacy
+    -- script type, hence pcall.
+    pcall(function()
+        GameTooltip:HookScript("OnTooltipSetItem", GuardedHandle)
+        ItemRefTooltip:HookScript("OnTooltipSetItem", GuardedHandle)
+    end)
 end)
