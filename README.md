@@ -47,7 +47,10 @@ First Aid (210)                      150-239 269 299
 - Covers **all nine professions** (incl. First Aid and Smelting) with the
   complete Classic Era recipe catalogue, data taken from the game client
   itself and cross-checked against Wowhead.
-- Works on **every client language** (all matching is by ID).
+- Works on **every client language** (all matching is by ID), with the
+  addon's own labels translated for German, French, Spanish (EU and
+  Latin America) and Brazilian Portuguese — corrections from native
+  speakers are welcome!
 - Configurable in Settings -> Options -> AddOns -> ProfessionTips
   (or `/proftips`): per-profession toggles and learned-only filters, lines
   per section (0 = professions only, else 2-35), modifier key, processed
