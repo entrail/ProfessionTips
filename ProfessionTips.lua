@@ -1,5 +1,6 @@
 local ADDON_NAME, ns = ...
 local L = ns.L
+local Compat = ns.Compat
 
 -- Tooltip lines on profession reagents. Per profession that uses the
 -- hovered item, a section is added:
@@ -260,7 +261,7 @@ local function AddRecipeLine(tooltip, skill, cand, recipe, hasProfession)
         left = left .. (" |cff9d9d9d(%s)|r"):format(format(L["via %s"], viaName))
     end
     -- Without the profession every recipe is unlearned - skip the noise.
-    if hasProfession and not IsPlayerSpell(cand.spellId) then
+    if hasProfession and not Compat.IsPlayerSpell(cand.spellId) then
         left = left .. (" |cffff5050(%s)|r"):format(L["not learned"])
     end
 
@@ -349,7 +350,7 @@ local function AddProfessionLines(tooltip, prof, itemId)
         if hasProfession and ns.db[prof.dbKey .. "OnlyLearned"] then
             pool = {}
             for _, cand in ipairs(candidates) do
-                if IsPlayerSpell(cand.spellId) then pool[#pool + 1] = cand end
+                if Compat.IsPlayerSpell(cand.spellId) then pool[#pool + 1] = cand end
             end
         end
 
@@ -377,8 +378,8 @@ local function AddProfessionLines(tooltip, prof, itemId)
                 if ua ~= ub then return ua end
                 if ua then
                     if hasProfession then
-                        local la = IsPlayerSpell(a.spellId)
-                        local lb = IsPlayerSpell(b.spellId)
+                        local la = Compat.IsPlayerSpell(a.spellId)
+                        local lb = Compat.IsPlayerSpell(b.spellId)
                         if la ~= lb then return la end
                     end
                     return ra.orange > rb.orange
@@ -465,14 +466,5 @@ ns.OnInit(function()
         HandleTooltip(tooltip, data)
     end
 
-    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
-        and Enum.TooltipDataType and Enum.TooltipDataType.Item then
-        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, GuardedHandle)
-    end
-    -- HookScript errors on clients whose GameTooltip lacks the legacy
-    -- script type, hence pcall.
-    pcall(function()
-        GameTooltip:HookScript("OnTooltipSetItem", GuardedHandle)
-        ItemRefTooltip:HookScript("OnTooltipSetItem", GuardedHandle)
-    end)
+    Compat.RegisterItemTooltipCallback(GuardedHandle)
 end)
