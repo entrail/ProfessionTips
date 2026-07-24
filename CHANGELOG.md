@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.3 (2026-07-24)
+
+- Re-release of 1.3.2 (the 1.3.2 package never got built). No in-game
+  changes.
+
 ## v1.3.2 (2026-07-24)
 
 - Maintenance release: release notes now come from a curated changelog
