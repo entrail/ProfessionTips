@@ -475,12 +475,15 @@ end
 local function ApplyLayout()
     if not overlay or not activeHost then return end
     local wide = activeHost:GetWidth() >= WIDE_THRESHOLD
+    local overlayWidth = overlay:GetWidth() or 0
     listFrame:ClearAllPoints()
     listFrame:SetPoint("TOPLEFT", overlay, "TOPLEFT", 0, -38) -- below the header row
     listFrame:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", 0, 0)
+    local listWidth
     if wide then
         EnsureDetail()
-        listFrame:SetWidth(math.max(280, overlay:GetWidth() * 0.46))
+        listWidth = math.max(280, overlayWidth * 0.46)
+        listFrame:SetWidth(listWidth)
         detailFrame:ClearAllPoints()
         detailFrame:SetPoint("TOPLEFT", listFrame, "TOPRIGHT", 6, 0)
         detailFrame:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", 0, 0)
@@ -489,23 +492,31 @@ local function ApplyLayout()
     else
         listFrame:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", 0, 0)
         listFrame:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", 0, 0)
+        listWidth = overlayWidth
         if detailFrame then detailFrame:Hide() end
     end
+    -- size the scroll child NOW instead of trusting OnSizeChanged timing:
+    -- rows anchor to both content edges, so a stale 1px width collapses
+    -- every row into invisibility
+    scrollContent:SetWidth(math.max(1, listWidth - 30))
 end
 
 -- ---------------------------------------------------------------- overlay
 
 local function EnsureOverlay()
     if overlay then return end
-    overlay = CreateFrame("Frame", "ProfessionTipsBrowser", UIParent, "BackdropTemplate")
+    overlay = CreateFrame("Frame", "ProfessionTipsBrowser", UIParent)
     overlay:SetFrameStrata("HIGH")
     overlay:EnableMouse(true) -- block the widgets underneath
+    overlay:EnableMouseWheel(true) -- swallow wheel outside our own scroll
+    overlay:SetScript("OnMouseWheel", function() end)
     overlay:Hide()
-    overlay:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        tile = true, tileSize = 16,
-    })
-    overlay:SetBackdropColor(0.03, 0.03, 0.03, 0.94)
+    -- fully OPAQUE background (WhatsTraining/PetTips look): the underlying
+    -- recipe list must not shine through (live finding 2026-08-05 - the
+    -- tooltip background texture has translucency baked in)
+    local bg = overlay:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.05, 0.05, 0.05, 1)
 
     -- header: skill level + search + show-known toggle
     local header = CreateFrame("Frame", nil, overlay)
@@ -581,13 +592,24 @@ local function AttachOverlay(host)
     overlay:SetFrameLevel(host:GetFrameLevel() + 20)
 end
 
+-- The whole show/refresh path runs inside button/event handlers where the
+-- game swallows errors silently (scriptErrors off by default) - report
+-- them to chat instead so a broken browser is diagnosable in the field.
+local function Guarded(fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then
+        print("|cff33ff99ProfessionTips|r browser error: " .. tostring(err))
+    end
+end
+
 local function RefreshBrowser()
     if not overlay or not overlay:IsShown() or not activeProf then return end
     overlay.skillText:SetText(("%s |cffffffff%d/%d|r"):format(
         RecipeName(activeProf.skillSpell), activeSkill or 0, activeMax or 0))
+    ApplyLayout() -- sizes first: rows anchor to the scroll child's edges
     BuildDisplayList()
     RefreshRows()
-    ApplyLayout()
+    if detailFrame and detailFrame:IsShown() then RefreshDetail() end
 end
 
 local function ShowBrowser(host)
@@ -615,9 +637,9 @@ local function UpdateHost(host)
         info.tab:Show()
         if info.tab:GetChecked() then
             if not overlay or not overlay:IsShown() or activeHost ~= host then
-                ShowBrowser(host)
+                Guarded(ShowBrowser, host)
             else
-                RefreshBrowser()
+                Guarded(RefreshBrowser)
             end
         end
     else
@@ -641,7 +663,7 @@ local function CreateTab(host, getLine)
     tab:SetScript("OnClick", function(self)
         PlaySound(SOUNDKIT.IG_ABILITY_PAGE_TURN)
         if self:GetChecked() then
-            ShowBrowser(host)
+            Guarded(ShowBrowser, host)
         else
             HideBrowser()
         end
