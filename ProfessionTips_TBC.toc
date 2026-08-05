@@ -22,6 +22,17 @@ Data\TBC\JewelcraftingData.lua
 Data\TBC\LeatherworkingData.lua
 Data\TBC\SmeltingData.lua
 Data\TBC\TailoringData.lua
+Data\TBC\AlchemySources.lua
+Data\TBC\BlacksmithingSources.lua
+Data\TBC\CookingSources.lua
+Data\TBC\EnchantingSources.lua
+Data\TBC\EngineeringSources.lua
+Data\TBC\FirstAidSources.lua
+Data\TBC\JewelcraftingSources.lua
+Data\TBC\LeatherworkingSources.lua
+Data\TBC\SmeltingSources.lua
+Data\TBC\TailoringSources.lua
 Data\FactionData.lua
 Options.lua
 ProfessionTips.lua
+RecipeBrowser.lua

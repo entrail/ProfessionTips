@@ -131,6 +131,25 @@ ns.OnInit(function()
             L["Also annotates reagents of professions this character does not have (as if at skill 0) - useful to decide what to keep or send to alts."])
     end
 
+    do
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            "ProfessionTips_RecipeBrowser",
+            "recipeBrowser",
+            ns.db,
+            Settings.VarType.Boolean,
+            L["Recipe browser tab"],
+            true
+        )
+        Settings.CreateCheckbox(category, setting,
+            L["Adds a side tab to the profession windows that lists every recipe of the profession - available now and coming up, with where to get each one (trainer, vendor, drop, quest) and what it costs."])
+        if Settings.SetOnValueChangedCallback then
+            Settings.SetOnValueChangedCallback("ProfessionTips_RecipeBrowser", function()
+                if ns.UpdateRecipeBrowser then ns.UpdateRecipeBrowser() end
+            end)
+        end
+    end
+
     -- ----------------------------------------------------------------
     -- About
     -- ----------------------------------------------------------------

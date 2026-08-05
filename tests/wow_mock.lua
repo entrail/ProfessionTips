@@ -162,6 +162,8 @@ return function()
     -- deterministic fake names: "Spell<id>" / "Item<id>"
     M.GetSpellInfo = function(id) return "Spell" .. id, nil, "icon" .. id end
     M.GetItemInfo = function(id) return "Item" .. id end
+    M.GetCoinTextureString = function(copper) return tostring(copper) .. "c" end
+    M.GetMoney = function() return M.state.money or 0 end
     M.FACTION_ALLIANCE = "Alliance"
     M.FACTION_HORDE = "Horde"
 

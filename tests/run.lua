@@ -20,6 +20,7 @@ local COMMON_TAIL = {
     "Data/FactionData.lua",
     "Options.lua",
     "ProfessionTips.lua",
+    "RecipeBrowser.lua",
 }
 local DATA = {
     Vanilla = {
@@ -28,6 +29,11 @@ local DATA = {
         "Data/Vanilla/EngineeringData.lua", "Data/Vanilla/FirstAidData.lua",
         "Data/Vanilla/LeatherworkingData.lua", "Data/Vanilla/SmeltingData.lua",
         "Data/Vanilla/TailoringData.lua",
+        "Data/Vanilla/AlchemySources.lua", "Data/Vanilla/BlacksmithingSources.lua",
+        "Data/Vanilla/CookingSources.lua", "Data/Vanilla/EnchantingSources.lua",
+        "Data/Vanilla/EngineeringSources.lua", "Data/Vanilla/FirstAidSources.lua",
+        "Data/Vanilla/LeatherworkingSources.lua", "Data/Vanilla/SmeltingSources.lua",
+        "Data/Vanilla/TailoringSources.lua",
     },
     TBC = {
         "Data/TBC/AlchemyData.lua", "Data/TBC/BlacksmithingData.lua",
@@ -35,6 +41,11 @@ local DATA = {
         "Data/TBC/EngineeringData.lua", "Data/TBC/FirstAidData.lua",
         "Data/TBC/JewelcraftingData.lua", "Data/TBC/LeatherworkingData.lua",
         "Data/TBC/SmeltingData.lua", "Data/TBC/TailoringData.lua",
+        "Data/TBC/AlchemySources.lua", "Data/TBC/BlacksmithingSources.lua",
+        "Data/TBC/CookingSources.lua", "Data/TBC/EnchantingSources.lua",
+        "Data/TBC/EngineeringSources.lua", "Data/TBC/FirstAidSources.lua",
+        "Data/TBC/JewelcraftingSources.lua", "Data/TBC/LeatherworkingSources.lua",
+        "Data/TBC/SmeltingSources.lua", "Data/TBC/TailoringSources.lua",
     },
 }
 
@@ -75,6 +86,8 @@ local SUITE_FILES = {
     "test_data.lua",
     "test_faction.lua",
     "test_tooltip.lua",
+    "test_sources.lua",
+    "test_browser.lua",
 }
 for _, s in ipairs(SUITE_FILES) do
     currentSuite = s

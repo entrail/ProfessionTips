@@ -24,6 +24,8 @@ local defaults = {
     showMissing = false,  -- also annotate professions this character lacks
     includeProcessed = true, -- follow cloth->bolt / ore->bar conversions
     modifier = "NONE",    -- only show while holding NONE/SHIFT/CTRL/ALT
+    recipeBrowser = true, -- side tab + recipe browser on profession windows
+    browserShowKnown = false, -- browser: also list already-known recipes
     -- per profession: consider only recipes the character has learned
     alchemyOnlyLearned = false,
     blacksmithingOnlyLearned = false,
@@ -71,6 +73,68 @@ function ns.NewRecipeDB(prefix, vendorReagents)
             end
         end
     end
+end
+
+-- Factory for the recipe source files (Data/<flavor>/<Profession>Sources.lua).
+-- Creates ns.<PREFIX>_SOURCES (spellId -> list of source entries) and
+-- returns the S() function the generated data lines call. Entry kinds:
+--   {k="t", cost}                              trainer (cost in copper)
+--   {k="v", item, cost, npc, name, zone, limited, faction}  vendor
+--   {k="d", item, npc, name, zone}             mob/boss drop
+--   {k="w", item}                              world drop
+--   {k="q", item, quest, name, zone, faction}  quest reward
+--   {k="u"}                                    source unknown
+-- name/zone are English display fallbacks; npc names are localized at
+-- runtime via ns.GetNpcName (server query), zones shown as shipped.
+function ns.NewSourceDB(prefix)
+    local sources = {}
+    ns[prefix .. "_SOURCES"] = sources
+    return function(spellId, list)
+        sources[spellId] = list
+    end
+end
+
+-- Localized NPC names (vendors, droppers): the data ships English names,
+-- but the server knows every creature's localized name - a creature query
+-- through a unit tooltip hyperlink returns it (same mechanism as PetTips'
+-- mob names). Async: the first lookup may come back empty (English
+-- fallback shown), replies are cached account-wide per locale in
+-- ProfessionTipsDB.npcNames. English clients skip all of this.
+local wantNpcNames = GetLocale() ~= "enUS" and GetLocale() ~= "enGB"
+local scanTip
+local function QueryNpcName(npcId)
+    local link = string.format("unit:Creature-0-0-0-0-%d-0000000000", npcId)
+    if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+        local data = C_TooltipInfo.GetHyperlink(link)
+        local line = data and data.lines and data.lines[1]
+        return line and line.leftText
+    end
+    if not scanTip then
+        scanTip = CreateFrame("GameTooltip", "ProfessionTipsScanTooltip", nil, "GameTooltipTemplate")
+    end
+    scanTip:SetOwner(WorldFrame, "ANCHOR_NONE")
+    scanTip:SetHyperlink(link)
+    local left = _G["ProfessionTipsScanTooltipTextLeft1"]
+    return left and left:GetText()
+end
+
+function ns.GetNpcName(npcId, fallback)
+    if not wantNpcNames or not ns.db or not npcId then return fallback end
+    local cache = ns.db.npcNames
+    if not cache or cache.locale ~= GetLocale() then
+        cache = { locale = GetLocale() }
+        ns.db.npcNames = cache
+    end
+    local name = cache[npcId]
+    if not name then
+        name = QueryNpcName(npcId)
+        if name and name ~= "" and name ~= UNKNOWN then
+            cache[npcId] = name
+        else
+            return fallback
+        end
+    end
+    return name
 end
 
 -- ns.OnInit(fn) -> runs at ADDON_LOADED, after ns.db is ready.

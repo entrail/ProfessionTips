@@ -153,6 +153,11 @@ local function FormatScale(orange, yellow, green, gray)
         DIFFICULTY_COLOR.green, gray - 1)
 end
 
+-- shared with RecipeBrowser.lua
+module.DifficultyAt = DifficultyAt
+module.FormatScale = FormatScale
+module.DIFFICULTY_COLOR = DIFFICULTY_COLOR
+
 local function GetSkill(prof)
     prof.name = prof.name or GetSpellInfo(prof.skillSpell)
     -- Classic skill line API (Era 1.15, TBC 2.5): localized-vs-localized

@@ -21,6 +21,16 @@ Data\Vanilla\FirstAidData.lua
 Data\Vanilla\LeatherworkingData.lua
 Data\Vanilla\SmeltingData.lua
 Data\Vanilla\TailoringData.lua
+Data\Vanilla\AlchemySources.lua
+Data\Vanilla\BlacksmithingSources.lua
+Data\Vanilla\CookingSources.lua
+Data\Vanilla\EnchantingSources.lua
+Data\Vanilla\EngineeringSources.lua
+Data\Vanilla\FirstAidSources.lua
+Data\Vanilla\LeatherworkingSources.lua
+Data\Vanilla\SmeltingSources.lua
+Data\Vanilla\TailoringSources.lua
 Data\FactionData.lua
 Options.lua
 ProfessionTips.lua
+RecipeBrowser.lua
