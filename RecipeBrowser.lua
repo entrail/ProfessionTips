@@ -324,7 +324,11 @@ local function GetRow(i)
     row.text:SetPoint("RIGHT", row.right, "LEFT", -6, 0)
 
     row:SetScript("OnEnter", function(self)
-        if self.entry then ShowRecipeTooltip(self.entry, self) end
+        -- wide mode has the detail pane - no tooltip on top of it
+        -- (user request 2026-08-06)
+        if self.entry and not (detailFrame and detailFrame:IsShown()) then
+            ShowRecipeTooltip(self.entry, self)
+        end
     end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     row:SetScript("OnClick", OnRowClick)
@@ -394,16 +398,16 @@ local function RefreshRows()
                 and entry.spell == selectedSpell)
             row.icon:SetTexture(RecipeIcon(entry.spell))
             row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
-            row.text:SetText(RecipeName(entry.spell))
-            if item.color == "known" then
-                row.text:SetTextColor(0.55, 0.55, 0.55)
-            elseif item.color == "upcoming" then
-                row.text:SetTextColor(1, 1, 1)
+            row.text:SetTextColor(1, 1, 1)
+            if item.color == "upcoming" then
+                row.text:SetText(RecipeName(entry.spell))
             else
-                -- available: color by difficulty at the current skill
+                -- available AND known: the difficulty color at the
+                -- current skill, matching the detail pane's recipe name
+                -- (user request 2026-08-06 - known rows were flat grey)
                 local diff = mod.DifficultyAt(activeSkill or 0, entry.recipe)
-                local c = mod.DIFFICULTY_COLOR[diff]
-                row.text:SetText(("|c%s%s|r"):format(c, RecipeName(entry.spell)))
+                row.text:SetText(("|c%s%s|r"):format(
+                    mod.DIFFICULTY_COLOR[diff], RecipeName(entry.spell)))
             end
             local reqColor = entry.req <= (activeSkill or 0) and "ffffffff" or "ffff5050"
             row.right:SetText(("%s  |c%s%d|r"):format(SourceTag(entry.sources),
