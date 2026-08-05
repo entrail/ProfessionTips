@@ -102,22 +102,40 @@ test("display list: section headers carry counts, rows follow their header", fun
     assertTrue(headerCount >= 2, "expected Available now + Coming up headers")
 end)
 
-test("source tag: one colored letter per distinct kind, ordered", function()
+test("source tag: primary kind as colored word plus +N for the rest", function()
     local ctx = T.boot("Vanilla")
     local ns = ctx.ns
+    -- trainer outranks vendor; duplicate vendor collapses into one kind
     local tag = ns.BrowserSourceTag({ { k = "v" }, { k = "t" }, { k = "v" } })
-    -- T sorts before V, duplicate V collapses
-    local tPos = tag:find("T", 1, true)
-    local vPos = tag:find("V", 1, true)
-    assertTrue(tPos and vPos, "tag misses a kind letter: " .. tag)
-    assertTrue(tPos < vPos, "kinds not ordered t before v: " .. tag)
-    local _, vCount = tag:gsub("V", "")
-    assertEqual(vCount, 1, "duplicate kind not collapsed: " .. tag)
+    assertTrue(tag:find("Trainer", 1, true) ~= nil, "primary word missing: " .. tag)
+    assertTrue(tag:find("+1", 1, true) ~= nil, "+N suffix missing: " .. tag)
+    assertTrue(tag:find("Vendor", 1, true) == nil, "secondary kind spelled out: " .. tag)
+
+    local single = ns.BrowserSourceTag({ { k = "d" } })
+    assertTrue(single:find("Drop", 1, true) ~= nil, "single kind word missing: " .. single)
+    assertTrue(single:find("+", 1, true) == nil, "+N on single kind: " .. single)
 
     assertTrue(ns.BrowserSourceTag(nil):find("?", 1, true) ~= nil,
         "missing sources must render the unknown tag")
     assertTrue(ns.BrowserSourceTag({ { k = "x" } }):find("?", 1, true) ~= nil,
         "invalid kind must render the unknown tag")
+end)
+
+test("info lines: requirement, sources, reagents in one block", function()
+    local ctx = T.boot("Vanilla")
+    local ns = ctx.ns
+    local list = ns.BrowserBuildList(profByPrefix(ns, "TAILORING"), 50)
+    local entry
+    for _, item in ipairs(list) do
+        if item.entry then entry = item.entry break end
+    end
+    assertTrue(entry ~= nil, "no entry in display list")
+    local lines = table.concat(ns.BrowserInfoLines(entry), "\n")
+    assertTrue(lines:find("Requires " .. entry.req, 1, true) ~= nil,
+        "requirement line missing")
+    assertTrue(lines:find("Source", 1, true) ~= nil, "source block missing")
+    assertTrue(lines:find("Item", 1, true) ~= nil, "reagent lines missing")
+    assertTrue(lines:find(" x%d") ~= nil, "reagent counts missing")
 end)
 
 test("source lines: trainer cost, vendor details, quest zone", function()

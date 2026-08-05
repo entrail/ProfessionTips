@@ -36,7 +36,6 @@ local SOURCE_COLOR = {
     w = "ffc060f0", -- world drop: purple
     u = "ff909090", -- unknown: gray
 }
-local SOURCE_LETTER = { t = "T", v = "V", d = "D", q = "Q", w = "W", u = "?" }
 local function SourceWord(kind)
     if kind == "t" then return L["Trainer"]
     elseif kind == "v" then return L["Vendor"]
@@ -48,26 +47,30 @@ end
 
 -- ---------------------------------------------------------------- model
 
--- Compact colored letter tag for a row, e.g. "T·V" - one letter per
--- DISTINCT source kind, ordered t/v/d/q/w/u.
+-- Colored word tag for a row (user request 2026-08-05): the PRIMARY
+-- (most accessible) source kind as a word - "Trainer", "Vendor", ... -
+-- plus a grey "+N" when more kinds exist; full detail in the tooltip.
+-- No data yet / unknown renders a grey "?".
 local function SourceTag(sources)
-    if not sources or #sources == 0 then
-        return "|c" .. SOURCE_COLOR.u .. SOURCE_LETTER.u .. "|r"
-    end
     local seen, kinds = {}, {}
-    for _, src in ipairs(sources) do
-        local kind = SOURCE_ORDER[src.k] and src.k or "u"
-        if not seen[kind] then
-            seen[kind] = true
-            kinds[#kinds + 1] = kind
+    if sources then
+        for _, src in ipairs(sources) do
+            local kind = SOURCE_ORDER[src.k] and src.k or "u"
+            if not seen[kind] then
+                seen[kind] = true
+                kinds[#kinds + 1] = kind
+            end
         end
+        table.sort(kinds, function(a, b) return SOURCE_ORDER[a] < SOURCE_ORDER[b] end)
     end
-    table.sort(kinds, function(a, b) return SOURCE_ORDER[a] < SOURCE_ORDER[b] end)
-    local parts = {}
-    for _, kind in ipairs(kinds) do
-        parts[#parts + 1] = "|c" .. SOURCE_COLOR[kind] .. SOURCE_LETTER[kind] .. "|r"
+    if #kinds == 0 or (#kinds == 1 and kinds[1] == "u") then
+        return "|c" .. SOURCE_COLOR.u .. "?|r"
     end
-    return table.concat(parts, "|cff606060\194\183|r") -- middle dot
+    local tag = "|c" .. SOURCE_COLOR[kinds[1]] .. SourceWord(kinds[1]) .. "|r"
+    if #kinds > 1 then
+        tag = tag .. " |cff909090+" .. (#kinds - 1) .. "|r"
+    end
+    return tag
 end
 ns.BrowserSourceTag = SourceTag -- exposed for tests
 
@@ -193,36 +196,77 @@ local function RecipeName(spellId)
     return GetSpellInfo(spellId) or ("spell " .. spellId)
 end
 
-local function ShowRecipeTooltip(entry, anchor)
-    GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
-    -- the enchant hyperlink renders the full craft tooltip (name +
-    -- reagent list) server-side; fall back to a plain name line
-    local linked = pcall(GameTooltip.SetHyperlink, GameTooltip, "enchant:" .. entry.spell)
-    if not linked then
-        GameTooltip:AddLine(RecipeName(entry.spell), 1, 1, 1)
+-- Spell icons: for spells the character has not learned, the client may
+-- resolve the icon to the "Temp" placeholder (the Samwise face) until
+-- the spell record is loaded (live finding 2026-08-05). Request the
+-- async load and show a question mark meanwhile; SPELL_DATA_LOAD_RESULT
+-- triggers a refresh (registered on the overlay).
+local TEMP_ICON_FILE_ID = 136235
+local function RecipeIcon(spellId)
+    local tex = GetSpellTexture(spellId)
+    local placeholder = not tex or tex == TEMP_ICON_FILE_ID
+        or (type(tex) == "string" and tex:lower():find("temp", 1, true) ~= nil)
+    if placeholder then
+        if C_Spell and C_Spell.RequestLoadSpellData then
+            pcall(C_Spell.RequestLoadSpellData, spellId)
+        end
+        return "Interface\\Icons\\INV_Misc_QuestionMark"
     end
+    return tex
+end
+
+-- The info block shared by the hover tooltip and the wide-mode detail
+-- pane (user request 2026-08-05: the tooltip should carry what the pane
+-- shows, so the default-size window loses nothing): requirement +
+-- breakpoint scale, learned status, all sources with costs, reagents.
+-- Returns a list of color-escaped lines; "" = spacer.
+local function BuildInfoLines(entry)
     local mod = ns.ProfessionTips
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddDoubleLine(
+    local lines = {}
+    local reqColor = entry.req <= (activeSkill or 0) and "ff20ff20" or "ffff5050"
+    lines[#lines + 1] = ("|c%s%s|r  %s"):format(reqColor,
         (L["Requires %d"]):format(entry.req),
         mod.FormatScale(entry.recipe.orange, entry.recipe.yellow,
-            entry.recipe.green, entry.recipe.gray),
-        entry.req <= (activeSkill or 0) and 0.1 or 1,
-        entry.req <= (activeSkill or 0) and 1 or 0.35,
-        entry.req <= (activeSkill or 0) and 0.1 or 0.35,
-        1, 1, 1)
+            entry.recipe.green, entry.recipe.gray))
     if entry.learned then
-        GameTooltip:AddLine(L["Already known"], 0.55, 0.55, 0.55)
+        lines[#lines + 1] = "|cff909090" .. L["Already known"] .. "|r"
     end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "|cfff0f0f0" .. L["Source"] .. ":|r"
     if entry.sources and #entry.sources > 0 then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(L["Source"] .. ":", 0.95, 0.95, 0.95)
         for _, src in ipairs(entry.sources) do
-            GameTooltip:AddLine(SourceLine(src), 1, 1, 1, true)
+            lines[#lines + 1] = SourceLine(src)
         end
     else
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(L["Source unknown"], 0.55, 0.55, 0.55)
+        lines[#lines + 1] = "|cff909090" .. L["Source unknown"] .. "|r"
+    end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "|cfff0f0f0" .. (SPELL_REAGENTS or "Reagents:") .. "|r"
+    local reagents = {}
+    for itemId, count in pairs(entry.recipe.reagents) do
+        reagents[#reagents + 1] = { id = itemId, count = count }
+    end
+    table.sort(reagents, function(a, b) return a.id < b.id end)
+    for _, r in ipairs(reagents) do
+        -- nil until the item cache answers; GET_ITEM_INFO_RECEIVED refreshes
+        local name = GetItemInfo(r.id)
+        lines[#lines + 1] = ("%s x%d"):format(name or "|cff909090...|r", r.count)
+    end
+    return lines
+end
+ns.BrowserInfoLines = BuildInfoLines -- exposed for tests
+
+local function ShowRecipeTooltip(entry, anchor)
+    GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
+    local mod = ns.ProfessionTips
+    local diff = mod.DifficultyAt(activeSkill or 0, entry.recipe)
+    GameTooltip:AddLine(("|c%s%s|r"):format(mod.DIFFICULTY_COLOR[diff], RecipeName(entry.spell)))
+    for _, line in ipairs(BuildInfoLines(entry)) do
+        if line == "" then
+            GameTooltip:AddLine(" ")
+        else
+            GameTooltip:AddLine(line, 1, 1, 1, true)
+        end
     end
     GameTooltip:Show()
 end
@@ -348,8 +392,7 @@ local function RefreshRows()
             row.entry = entry
             row.selected:SetShown(detailFrame and detailFrame:IsShown()
                 and entry.spell == selectedSpell)
-            row.icon:SetTexture(GetSpellTexture(entry.spell)
-                or "Interface\\Icons\\INV_Misc_QuestionMark")
+            row.icon:SetTexture(RecipeIcon(entry.spell))
             row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
             row.text:SetText(RecipeName(entry.spell))
             if item.color == "known" then
@@ -434,46 +477,11 @@ function RefreshDetail() -- assigns the forward-declared local
         return
     end
 
-    w.icon:SetTexture(GetSpellTexture(entry.spell)
-        or "Interface\\Icons\\INV_Misc_QuestionMark")
+    w.icon:SetTexture(RecipeIcon(entry.spell))
     local diff = mod.DifficultyAt(activeSkill or 0, entry.recipe)
     w.name:SetText(("|c%s%s|r"):format(mod.DIFFICULTY_COLOR[diff], RecipeName(entry.spell)))
-
-    local reqColor = entry.req <= (activeSkill or 0) and "ff20ff20" or "ffff5050"
-    w.req:SetText(("|c%s%s|r   %s"):format(reqColor,
-        (L["Requires %d"]):format(entry.req),
-        mod.FormatScale(entry.recipe.orange, entry.recipe.yellow,
-            entry.recipe.green, entry.recipe.gray)))
-
-    local lines = {}
-    if entry.learned then
-        lines[#lines + 1] = "|cff909090" .. L["Already known"] .. "|r"
-        lines[#lines + 1] = ""
-    end
-    lines[#lines + 1] = "|cfff0f0f0" .. L["Source"] .. ":|r"
-    if entry.sources and #entry.sources > 0 then
-        for _, src in ipairs(entry.sources) do
-            lines[#lines + 1] = SourceLine(src)
-        end
-    else
-        lines[#lines + 1] = "|cff909090" .. L["Source unknown"] .. "|r"
-    end
-
-    -- reagent list (names fill in as the item cache answers; a refresh
-    -- runs on GET_ITEM_INFO_RECEIVED while the pane is up)
-    lines[#lines + 1] = ""
-    lines[#lines + 1] = "|cfff0f0f0" .. SPELL_REAGENTS:gsub("%s*$", "") .. "|r"
-    local reagents = {}
-    for itemId, count in pairs(entry.recipe.reagents) do
-        reagents[#reagents + 1] = { id = itemId, count = count }
-    end
-    table.sort(reagents, function(a, b) return a.id < b.id end)
-    for _, r in ipairs(reagents) do
-        local name = GetItemInfo(r.id)
-        lines[#lines + 1] = ("%s x%d"):format(name or ("|cff909090...|r"), r.count)
-    end
-
-    w.body:SetText(table.concat(lines, "\n"))
+    w.req:SetText("")
+    w.body:SetText(table.concat(BuildInfoLines(entry), "\n"))
 end
 
 -- ---------------------------------------------------------------- layout
@@ -488,7 +496,7 @@ local function ApplyLayout()
     -- below that line, so cover everything down to the border - the
     -- craft buttons are useless while browsing anyway (live finding
     -- 2026-08-05: a strip of the real list stayed visible)
-    overlay:SetPoint("BOTTOMRIGHT", activeHost, "BOTTOMRIGHT", -38, wide and 30 or 80)
+    overlay:SetPoint("BOTTOMRIGHT", activeHost, "BOTTOMRIGHT", -38, wide and 48 or 80)
     local overlayWidth = overlay:GetWidth() or 0
     if overlayWidth == 0 then -- rect not resolved yet this frame
         overlayWidth = (activeHost:GetWidth() or 384) - 60
@@ -599,10 +607,23 @@ local function EnsureOverlay()
         scrollContent:SetWidth(width)
     end)
 
-    -- names of uncached reagents resolve asynchronously
+    -- async data arriving while the browser is open: reagent names
+    -- (GET_ITEM_INFO_RECEIVED) and spell icons requested by RecipeIcon
+    -- (SPELL_DATA_LOAD_RESULT, fires once per spell - debounced into one
+    -- coalesced refresh instead of hundreds of row rebuilds)
+    local refreshPending = false
     overlay:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    overlay:RegisterEvent("SPELL_DATA_LOAD_RESULT")
     overlay:SetScript("OnEvent", function()
-        if detailFrame and detailFrame:IsShown() then RefreshDetail() end
+        if refreshPending or not overlay:IsShown() then return end
+        refreshPending = true
+        C_Timer.After(0.25, function()
+            refreshPending = false
+            if overlay:IsShown() then
+                RefreshRows()
+                if detailFrame and detailFrame:IsShown() then RefreshDetail() end
+            end
+        end)
     end)
 end
 

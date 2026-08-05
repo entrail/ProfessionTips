@@ -1,10 +1,49 @@
 local ADDON_NAME, ns = ...
 
--- Acquisition sources for TBC FirstAid recipes: where each recipe is
+-- Acquisition sources for TBC First Aid recipes: where each recipe is
 -- obtained. Keyed by crafting spell ID (same as FirstAidData.lua).
--- PLACEHOLDER - generated data pending.
+-- Generated from Wowhead classic data 2026-08-05.
+--
+-- Notes: Linen Bandage is auto-learned with Apprentice First Aid in the
+-- 2.5 client (no trainer entry, hence no cost). Heavy Mageweave/Runecloth/
+-- Heavy Runecloth Bandage are taught only by the Triage-quest doctors
+-- (Doctor Gustaf VanHowzen, Theramore / Doctor Gregory Victor, Hammerfall)
+-- after completing the Triage quest; their training costs are not in the
+-- sniffed data, so they are omitted. Vendor costs are Wowhead-listed prices
+-- (may include sniffed reputation discounts).
 
 local S = ns.NewSourceDB("FIRSTAID")
 
 -- DATA_START (generated; do not hand-edit between markers)
+S(3275, {{k="t"}}) -- Linen Bandage
+S(3276, {{k="t", cost=100}}) -- Heavy Linen Bandage
+S(3277, {{k="t", cost=250}}) -- Wool Bandage
+S(7934, {{k="t", cost=250}}) -- Anti-Venom
+S(3278, {{k="t", cost=1000}}) -- Heavy Wool Bandage
+S(7935, {{k="w", item=6454}}) -- Strong Anti-Venom
+S(7928, {{k="t", cost=5000}}) -- Silk Bandage
+S(7929, {
+  {k="v", item=16112, cost=2200, npc=2805, name="Deneb Walker", zone="Arathi Highlands", faction="Alliance"},
+  {k="v", item=16112, cost=2200, npc=13476, name="Balai Lok'Wein", zone="Dustwallow Marsh", faction="Horde"},
+}) -- Heavy Silk Bandage
+S(10840, {
+  {k="v", item=16113, cost=5000, npc=2805, name="Deneb Walker", zone="Arathi Highlands", faction="Alliance"},
+  {k="v", item=16113, cost=5000, npc=13476, name="Balai Lok'Wein", zone="Dustwallow Marsh", faction="Horde"},
+}) -- Mageweave Bandage
+S(10841, {{k="t"}}) -- Heavy Mageweave Bandage
+S(18629, {{k="t"}}) -- Runecloth Bandage
+S(18630, {{k="t"}}) -- Heavy Runecloth Bandage
+S(23787, {
+  {k="v", item=19442, cost=100000, npc=10856, name="Argent Quartermaster Hasana", zone="Tirisfal Glades"},
+  {k="v", item=19442, cost=90000, npc=10857, name="Argent Quartermaster Lightspark", zone="Western Plaguelands"},
+  {k="v", item=19442, cost=90000, npc=11536, name="Quartermaster Miranda Breechlock", zone="Eastern Plaguelands"},
+}) -- Powerful Anti-Venom
+S(27032, {
+  {k="v", item=21992, cost=19000, npc=18990, name="Burko", zone="Hellfire Peninsula", faction="Alliance"},
+  {k="v", item=21992, cost=20000, npc=18991, name="Aresella", zone="Hellfire Peninsula", faction="Horde"},
+}) -- Netherweave Bandage
+S(27033, {
+  {k="v", item=21993, cost=38000, npc=18990, name="Burko", zone="Hellfire Peninsula", faction="Alliance"},
+  {k="v", item=21993, cost=40000, npc=18991, name="Aresella", zone="Hellfire Peninsula", faction="Horde"},
+}) -- Heavy Netherweave Bandage
 -- DATA_END
