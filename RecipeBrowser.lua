@@ -117,7 +117,9 @@ local function SourceLine(src)
     local kind = SOURCE_ORDER[src.k] and src.k or "u"
     local head = "|c" .. SOURCE_COLOR[kind] .. SourceWord(kind) .. "|r"
     local bits = {}
-    if src.name and (kind == "v" or kind == "d") then
+    -- "t" normally has no npc, but special NPC-teachers (e.g. the BWL
+    -- Elementium smelt) ship one - show them like a vendor/dropper
+    if src.name and (kind == "t" or kind == "v" or kind == "d") then
         local name = ns.GetNpcName(src.npc, src.name)
         bits[#bits + 1] = name .. (src.zone and (" (" .. src.zone .. ")") or "")
     elseif src.name and kind == "q" then
