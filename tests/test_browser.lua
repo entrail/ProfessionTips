@@ -70,6 +70,38 @@ test("model drops recipes locked to the other faction", function()
     assertTrue(hasRecipe(alliModel, 2542), "Alliance model misses its own recipe")
 end)
 
+test("display list: section headers carry counts, rows follow their header", function()
+    local ctx = T.boot("Vanilla", function(m)
+        m.state.knownSpells = { [2963] = true }
+    end)
+    local ns = ctx.ns
+    local list = ns.BrowserBuildList(profByPrefix(ns, "ENGINEERING"), 113)
+    assertTrue(#list > 0, "display list empty")
+    assertTrue(list[1].header ~= nil, "list must start with a section header")
+
+    local headerCount, rowsSinceHeader, lastHeader = 0, 0, nil
+    local function closeSection()
+        if lastHeader then
+            T.assertEqual(rowsSinceHeader, lastHeader.count,
+                "header count mismatch for " .. tostring(lastHeader.header))
+        end
+    end
+    for _, item in ipairs(list) do
+        if item.header then
+            closeSection()
+            headerCount = headerCount + 1
+            lastHeader = item
+            rowsSinceHeader = 0
+            assertTrue(item.count > 0, "empty section rendered: " .. tostring(item.header))
+        else
+            rowsSinceHeader = rowsSinceHeader + 1
+            assertTrue(item.entry ~= nil, "row without entry")
+        end
+    end
+    closeSection()
+    assertTrue(headerCount >= 2, "expected Available now + Coming up headers")
+end)
+
 test("source tag: one colored letter per distinct kind, ordered", function()
     local ctx = T.boot("Vanilla")
     local ns = ctx.ns

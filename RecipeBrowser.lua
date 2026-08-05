@@ -302,14 +302,14 @@ local function BuildDisplayList()
     if not model then return end
 
     local function AddSection(headerText, list, color)
-        local added = false
+        local headerItem -- keep the header handle; #displayList moves on
         for _, entry in ipairs(list) do
             if MatchesSearch(entry) then
-                if not added then
-                    added = true
-                    displayList[#displayList + 1] = { header = headerText, count = 0 }
+                if not headerItem then
+                    headerItem = { header = headerText, count = 0 }
+                    displayList[#displayList + 1] = headerItem
                 end
-                displayList[#displayList].count = displayList[#displayList].count + 1
+                headerItem.count = headerItem.count + 1
                 displayList[#displayList + 1] = { entry = entry, color = color }
             end
         end
@@ -320,6 +320,14 @@ local function BuildDisplayList()
     if ns.db.browserShowKnown then
         AddSection(L["Already known"], model.known, "known")
     end
+end
+
+-- headless hook: build the display list for a profession without the UI
+-- (the AddSection counter bug shipped because only the model was tested)
+function ns.BrowserBuildList(prof, skill)
+    activeProf, activeSkill = prof, skill
+    BuildDisplayList()
+    return displayList
 end
 
 local function RefreshRows()
@@ -475,7 +483,16 @@ end
 local function ApplyLayout()
     if not overlay or not activeHost then return end
     local wide = activeHost:GetWidth() >= WIDE_THRESHOLD
+    -- the default frame's content area ends above the bottom button row
+    -- (+80 verified in game); widened frames (Leatrix) grow the list well
+    -- below that line, so cover everything down to the border - the
+    -- craft buttons are useless while browsing anyway (live finding
+    -- 2026-08-05: a strip of the real list stayed visible)
+    overlay:SetPoint("BOTTOMRIGHT", activeHost, "BOTTOMRIGHT", -38, wide and 30 or 80)
     local overlayWidth = overlay:GetWidth() or 0
+    if overlayWidth == 0 then -- rect not resolved yet this frame
+        overlayWidth = (activeHost:GetWidth() or 384) - 60
+    end
     listFrame:ClearAllPoints()
     listFrame:SetPoint("TOPLEFT", overlay, "TOPLEFT", 0, -38) -- below the header row
     listFrame:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", 0, 0)
@@ -511,12 +528,19 @@ local function EnsureOverlay()
     overlay:EnableMouseWheel(true) -- swallow wheel outside our own scroll
     overlay:SetScript("OnMouseWheel", function() end)
     overlay:Hide()
-    -- fully OPAQUE background (WhatsTraining/PetTips look): the underlying
-    -- recipe list must not shine through (live finding 2026-08-05 - the
-    -- tooltip background texture has translucency baked in)
+    -- fully OPAQUE, dark-textured background (the WhatsTraining/PetTips
+    -- look; user request 2026-08-05): black underlay for guaranteed
+    -- opacity + tiled dark marble on top. The tooltip background texture
+    -- tried first has translucency baked in - do not go back to it.
+    local underlay = overlay:CreateTexture(nil, "BACKGROUND", nil, -1)
+    underlay:SetAllPoints()
+    underlay:SetColorTexture(0, 0, 0, 1)
     local bg = overlay:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(0.05, 0.05, 0.05, 1)
+    bg:SetTexture("Interface\\FrameGeneral\\UI-Background-Marble", "REPEAT", "REPEAT")
+    bg:SetHorizTile(true)
+    bg:SetVertTile(true)
+    bg:SetVertexColor(0.5, 0.5, 0.5, 1) -- darken toward the WhatsTraining tone
 
     -- header: skill level + search + show-known toggle
     local header = CreateFrame("Frame", nil, overlay)
@@ -528,9 +552,17 @@ local function EnsureOverlay()
     overlay.skillText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlay.skillText:SetPoint("LEFT", 2, 0)
 
+    showKnownCheck = CreateFrame("CheckButton", "ProfessionTipsBrowserShowKnown",
+        header, "UICheckButtonTemplate")
+    showKnownCheck:SetSize(24, 24)
+    showKnownCheck:SetPoint("RIGHT", header, "RIGHT", -70, 0)
+
+    -- stretches between the skill text and the Known toggle, so it
+    -- shrinks instead of colliding on the default 384px frame
     searchBox = CreateFrame("EditBox", "ProfessionTipsBrowserSearch", header, "SearchBoxTemplate")
-    searchBox:SetSize(120, 22)
-    searchBox:SetPoint("LEFT", overlay.skillText, "RIGHT", 14, 0)
+    searchBox:SetHeight(22)
+    searchBox:SetPoint("LEFT", overlay.skillText, "RIGHT", 18, 0)
+    searchBox:SetPoint("RIGHT", showKnownCheck, "LEFT", -12, 0)
     searchBox:SetAutoFocus(false)
     searchBox:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
@@ -541,11 +573,6 @@ local function EnsureOverlay()
             RefreshRows()
         end
     end)
-
-    showKnownCheck = CreateFrame("CheckButton", "ProfessionTipsBrowserShowKnown",
-        header, "UICheckButtonTemplate")
-    showKnownCheck:SetSize(24, 24)
-    showKnownCheck:SetPoint("RIGHT", header, "RIGHT", -70, 0)
     local label = _G[showKnownCheck:GetName() .. "Text"]
     if label then
         label:SetText(L["Known"])
