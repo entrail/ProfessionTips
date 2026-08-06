@@ -106,9 +106,15 @@ test("faction mark: colored initial only for locked recipes", function()
     local ns = ctx.ns
     assertEqual(ns.BrowserFactionMark({ faction = nil }), "",
         "unlocked recipes must carry no marker")
+    -- the crest texture (base-UI PvP icon) marks locked recipes
     local mark = ns.BrowserFactionMark({ faction = "Alliance" })
-    assertTrue(mark:find("A", 1, true) ~= nil, "no faction initial: " .. mark)
-    assertTrue(mark:find("4a7fda", 1, true) ~= nil, "no faction color: " .. mark)
+    assertTrue(mark:find("UI-PVP-Alliance", 1, true) ~= nil, "no crest: " .. mark)
+    assertTrue(ns.BrowserFactionMark({ faction = "Horde" }):find("UI-PVP-Horde", 1, true) ~= nil,
+        "no horde crest")
+    -- text label: crest + colored localized faction name
+    local label = ns.BrowserFactionLabel("Alliance")
+    assertTrue(label:find("UI-PVP-Alliance", 1, true) ~= nil, "label without crest: " .. label)
+    assertTrue(label:find("4a7fda", 1, true) ~= nil, "label without color: " .. label)
 end)
 
 test("source filters hide non-matching recipes", function()

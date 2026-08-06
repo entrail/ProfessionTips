@@ -144,6 +144,51 @@ function ns.BuildBrowserModel(prof, skill)
     return model
 end
 
+
+-- Faction colors + the localized faction name (FACTION_ALLIANCE /
+-- FACTION_HORDE are localized by the client).
+local FACTION_COLOR = { Alliance = "ff4a7fda", Horde = "ffe03030" }
+
+local playerFaction
+local function PlayerFaction()
+    playerFaction = playerFaction or UnitFactionGroup("player")
+    return playerFaction
+end
+
+-- The faction crests from the unit-frame PvP icons - part of the base UI
+-- in every client since vanilla, so no availability guesswork. Cropped
+-- to the crest itself via the inline texture escape's coord form.
+local FACTION_ICON = {
+    Alliance = "|TInterface\\TargetingFrame\\UI-PVP-Alliance:14:14:0:0:64:64:5:38:2:36|t",
+    Horde    = "|TInterface\\TargetingFrame\\UI-PVP-Horde:14:14:0:0:64:64:5:38:2:36|t",
+}
+
+local function FactionName(faction)
+    if faction == "Alliance" then return FACTION_ALLIANCE or "Alliance" end
+    return FACTION_HORDE or "Horde"
+end
+
+-- Row badge for faction-locked recipes: the faction crest (falls back to
+-- the colored initial if the texture ever fails), nothing for recipes
+-- both factions can obtain. (user request 2026-08-06)
+local function FactionMark(entry)
+    if not entry.faction then return "" end
+    local icon = FACTION_ICON[entry.faction]
+    if icon then return icon .. " " end
+    return ("|c%s[%s]|r "):format(FACTION_COLOR[entry.faction] or "ffffffff",
+        string.sub(FactionName(entry.faction), 1, 1))
+end
+ns.BrowserFactionMark = FactionMark -- exposed for tests
+
+-- Crest + the localized faction name in faction colors, for text lines
+-- (info block, source lines).
+local function FactionLabel(faction)
+    return ("%s|c%s%s|r"):format(FACTION_ICON[faction] or "",
+        FACTION_COLOR[faction] or "ffffffff", FactionName(faction))
+end
+ns.BrowserFactionLabel = FactionLabel -- exposed for tests
+
+
 -- One rendered line per source entry (full text - tooltip + detail pane).
 -- Money is colored by affordability, npc names localized on demand.
 local function SourceLine(src)
@@ -168,40 +213,11 @@ local function SourceLine(src)
         bits[#bits + 1] = money
     end
     if src.limited then bits[#bits + 1] = L["limited stock"] end
-    if src.faction then
-        bits[#bits + 1] = src.faction == "Alliance" and FACTION_ALLIANCE or FACTION_HORDE
-    end
+    if src.faction then bits[#bits + 1] = FactionLabel(src.faction) end
     if #bits == 0 then return head end
     return head .. ": " .. table.concat(bits, " - ")
 end
 ns.BrowserSourceLine = SourceLine -- exposed for tests
-
--- Faction colors + the localized faction name (FACTION_ALLIANCE /
--- FACTION_HORDE are localized by the client).
-local FACTION_COLOR = { Alliance = "ff4a7fda", Horde = "ffe03030" }
-
-local playerFaction
-local function PlayerFaction()
-    playerFaction = playerFaction or UnitFactionGroup("player")
-    return playerFaction
-end
-
-local function FactionName(faction)
-    if faction == "Alliance" then return FACTION_ALLIANCE or "Alliance" end
-    return FACTION_HORDE or "Horde"
-end
-
--- Compact row badge for faction-locked recipes: the first letter of the
--- localized faction name in faction colors ("A" / "H" - "Allianz",
--- "Alianza", "Horda" all work). Nothing for recipes both factions can
--- obtain. (user request 2026-08-06)
-local function FactionMark(entry)
-    if not entry.faction then return "" end
-    return ("|c%s[%s]|r "):format(FACTION_COLOR[entry.faction] or "ffffffff",
-        string.sub(FactionName(entry.faction), 1, 1))
-end
-ns.BrowserFactionMark = FactionMark -- exposed for tests
-
 -- ---------------------------------------------------------------- state
 
 local module = {}
@@ -351,13 +367,15 @@ local function BuildInfoLines(entry)
             entry.recipe.green, entry.recipe.gray))
     -- faction lock: what it means for THIS character
     if entry.faction then
-        local color = FACTION_COLOR[entry.faction] or "ffffffff"
-        local line = ("|c%s%s|r"):format(color,
+        -- crest + colored faction name, explanation in grey so the
+        -- faction itself stands out (user request 2026-08-06)
+        local line = ("%s|c%s%s|r"):format(FACTION_ICON[entry.faction] or "",
+            FACTION_COLOR[entry.faction] or "ffffffff",
             (L["%s only"]):format(FactionName(entry.faction)))
         if entry.faction ~= PlayerFaction() then
-            line = line .. " - " .. (entry.crossAH
+            line = line .. "|cffb0b0b0 - " .. (entry.crossAH
                 and L["your faction can only get it traded via the neutral auction house"]
-                or L["your faction cannot obtain this recipe"])
+                or L["your faction cannot obtain this recipe"]) .. "|r"
         end
         lines[#lines + 1] = line
     end
@@ -934,9 +952,10 @@ local function EnsureOverlay()
         btn:SetWidth(math.max(34, btn:GetFontString():GetStringWidth() + 14))
         btn:SetScript("OnClick", function(self)
             onClick(self)
-            BuildDisplayList()
-            RefreshRows()
-            if detailFrame and detailFrame:IsShown() then RefreshDetail() end
+            -- full refresh: re-runs LayoutFilterBar, which re-Syncs every
+            -- button's highlight and the faction button's label/width.
+            -- (bugfix 2026-08-06: the styling only updated on reopen)
+            RefreshBrowserList()
         end)
         btn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
