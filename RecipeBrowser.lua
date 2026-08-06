@@ -397,6 +397,29 @@ local function GetRow(i)
         GameTooltip:Hide()
     end)
     row:SetScript("OnClick", OnRowClick)
+
+    -- the ICON is its own hover target showing the crafted item's real
+    -- tooltip - in BOTH modes (user request 2026-08-06; in wide mode
+    -- this is the only row-level tooltip). Clicks pass through to the
+    -- normal row behavior, and the row highlight stays lit.
+    row.iconHover = CreateFrame("Button", nil, row)
+    row.iconHover:SetAllPoints(row.icon)
+    row.iconHover:SetScript("OnEnter", function()
+        local entry = row.entry
+        if not entry then return end
+        row:LockHighlight()
+        local product = ns.CRAFT_PRODUCT and ns.CRAFT_PRODUCT[entry.spell]
+        if product then
+            ShowProductTooltip(product, row)
+        elseif not (detailFrame and detailFrame:IsShown()) then
+            ShowRecipeTooltip(entry, row) -- no product (enchants): recipe info
+        end
+    end)
+    row.iconHover:SetScript("OnLeave", function()
+        row:UnlockHighlight()
+        GameTooltip:Hide()
+    end)
+    row.iconHover:SetScript("OnClick", function() OnRowClick(row) end)
     rows[i] = row
     return row
 end
