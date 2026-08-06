@@ -30,6 +30,7 @@ Data\Vanilla\FirstAidSources.lua
 Data\Vanilla\LeatherworkingSources.lua
 Data\Vanilla\SmeltingSources.lua
 Data\Vanilla\TailoringSources.lua
+Data\ProductData.lua
 Data\FactionData.lua
 Options.lua
 ProfessionTips.lua

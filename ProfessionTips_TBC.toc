@@ -32,6 +32,7 @@ Data\TBC\JewelcraftingSources.lua
 Data\TBC\LeatherworkingSources.lua
 Data\TBC\SmeltingSources.lua
 Data\TBC\TailoringSources.lua
+Data\ProductData.lua
 Data\FactionData.lua
 Options.lua
 ProfessionTips.lua
