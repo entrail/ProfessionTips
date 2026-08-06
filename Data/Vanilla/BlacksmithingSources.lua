@@ -7,10 +7,10 @@ local ADDON_NAME, ns = ...
 local S = ns.NewSourceDB("BLACKSMITHING")
 
 -- DATA_START (generated; do not hand-edit between markers)
-S(2660, {{k="t", cost=0}}) -- Rough Sharpening Stone
-S(3115, {{k="t", cost=0}}) -- Rough Weightstone
-S(12260, {{k="t", cost=0}}) -- Rough Copper Vest
-S(2663, {{k="t", cost=0}}) -- Copper Bracers
+S(2660, {{k="t"}}) -- Rough Sharpening Stone (auto-learned with Apprentice Blacksmithing)
+S(3115, {{k="t"}}) -- Rough Weightstone (auto-learned with Apprentice Blacksmithing)
+S(12260, {{k="t"}}) -- Rough Copper Vest (auto-learned with Apprentice Blacksmithing)
+S(2663, {{k="t"}}) -- Copper Bracers (auto-learned with Apprentice Blacksmithing)
 S(2662, {{k="t", cost=50}}) -- Copper Chain Pants
 S(2737, {{k="t", cost=50}}) -- Copper Mace
 S(2738, {{k="t", cost=50}}) -- Copper Axe
