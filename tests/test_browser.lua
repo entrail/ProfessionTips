@@ -114,6 +114,15 @@ test("scale notation: first segment is always a from-to range", function()
     local bronze = FormatScale(65, 65, 90, 115)
     assertTrue(bronze:find("65-89", 1, true) ~= nil, "yellow range missing: " .. bronze)
     assertTrue(bronze:find("114", 1, true) ~= nil, "green bound missing: " .. bronze)
+    -- green-from-the-start recipe (Smelt Tin)
+    local tin = FormatScale(65, 65, 65, 75)
+    assertTrue(tin:find("65-74", 1, true) ~= nil, "green range missing: " .. tin)
+    assertTrue(tin:find("40c040", 1, true) ~= nil, "green color missing: " .. tin)
+    -- never-trivial recipe (Smelt Steel): sentinel renders as "165+"
+    local steel = FormatScale(165, 165, 1000, 1000)
+    assertTrue(steel:find("165+", 1, true) ~= nil, "forever marker missing: " .. steel)
+    assertTrue(steel:find("164", 1, true) == nil
+        and steel:find("999", 1, true) == nil, "sentinel leaked: " .. steel)
 end)
 
 test("product mapping: crafted items known for item-producing recipes", function()

@@ -139,21 +139,38 @@ end
 -- skill point per craft while orange, declining chance until the yellow /
 -- green upper bounds. Matters when buying mats: yellow needs ~1-4 per
 -- point, green far more.
+-- Breakpoints at/above this are the "never turns trivial" sentinel (the
+-- special smelts - Steel, Thorium, ... - stay yellow forever; their DB
+-- colors are all-equal, encoded as green/gray = 1000 in SmeltingData).
+local NEVER_TRIVIAL = 999
+
 local function FormatScale(orange, yellow, green, gray)
-    -- Notation: FIRST segment as a from-to range, then upper bounds.
-    -- Recipes that are never orange (orange >= yellow: Smelt Bronze,
-    -- TBC flasks, ...) start YELLOW, so the yellow span becomes the
-    -- range - "65-89 114" instead of the confusing "65 89 114"
+    -- Notation: FIRST segment as a from-to range (starting at the
+    -- required skill), later segments as upper bounds only. Segments
+    -- that do not occur are skipped (Smelt Bronze starts yellow, Smelt
+    -- Tin starts GREEN); never-trivial recipes render as "165+"
     -- (user feedback 2026-08-06).
-    if yellow > orange then
-        return ("|c%s%d-%d|r |c%s%d|r |c%s%d|r"):format(
-            DIFFICULTY_COLOR.orange, orange, yellow - 1,
-            DIFFICULTY_COLOR.yellow, green - 1,
-            DIFFICULTY_COLOR.green, gray - 1)
+    local segs = {}
+    if yellow > orange then segs[#segs + 1] = { color = "orange", up = yellow - 1 } end
+    if green > yellow and green > orange then segs[#segs + 1] = { color = "yellow", up = green - 1 } end
+    if gray > green and gray > orange then segs[#segs + 1] = { color = "green", up = gray - 1 } end
+    if #segs == 0 then -- fully degenerate data; show the bare requirement
+        return ("|c%s%d|r"):format(DIFFICULTY_COLOR.yellow, orange)
     end
-    return ("|c%s%d-%d|r |c%s%d|r"):format(
-        DIFFICULTY_COLOR.yellow, orange, green - 1,
-        DIFFICULTY_COLOR.green, gray - 1)
+    local parts = {}
+    for i, seg in ipairs(segs) do
+        local text
+        if seg.up >= NEVER_TRIVIAL then
+            text = (i == 1) and (orange .. "+") or "+"
+        elseif i == 1 then
+            text = orange .. "-" .. seg.up
+        else
+            text = tostring(seg.up)
+        end
+        parts[#parts + 1] = ("|c%s%s|r"):format(DIFFICULTY_COLOR[seg.color], text)
+        if seg.up >= NEVER_TRIVIAL then break end -- nothing beyond "forever"
+    end
+    return table.concat(parts, " ")
 end
 
 -- shared with RecipeBrowser.lua
