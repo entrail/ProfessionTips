@@ -187,7 +187,7 @@ S(23628, {{k="v", item=19202, cost=22000, npc=11557, name="Meilosh", zone="Felwo
 S(23632, {{k="v", item=19203, cost=22000, npc=10856, name="Argent Quartermaster Hasana", zone="Tirisfal Glades", faction="Horde"},
           {k="v", item=19203, cost=22000, npc=10857, name="Argent Quartermaster Lightspark", zone="Western Plaguelands"},
           {k="v", item=19203, cost=22000, npc=11536, name="Quartermaster Miranda Breechlock", zone="Eastern Plaguelands"}}) -- Girdle of the Dawn
-S(16984, {{k="d", item=12828, npc=10119, name="Volchan"}}) -- Volcanic Hammer
+S(16984, {{k="d", item=12828, npc=10119, name="Volchan", zone="Burning Steppes"}}) -- Volcanic Hammer
 S(16985, {{k="d", item=12830, zone="Stratholme"}}) -- Corruption
 S(16657, {{k="q", item=12700, quest=7654, name="Imperial Plate Boots", zone="Tanaris"}}) -- Imperial Plate Boots
 S(16658, {{k="q", item=12701, quest=7657, name="Imperial Plate Helm", zone="Tanaris"}}) -- Imperial Plate Helm
