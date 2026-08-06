@@ -177,6 +177,7 @@ end
 module.DifficultyAt = DifficultyAt
 module.FormatScale = FormatScale
 module.DIFFICULTY_COLOR = DIFFICULTY_COLOR
+module.NEVER_TRIVIAL = NEVER_TRIVIAL
 
 local function GetSkill(prof)
     prof.name = prof.name or GetSpellInfo(prof.skillSpell)

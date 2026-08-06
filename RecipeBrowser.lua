@@ -257,6 +257,12 @@ local function BuildInfoLines(entry)
         (L["Requires %d"]):format(entry.req),
         mod.FormatScale(entry.recipe.orange, entry.recipe.yellow,
             entry.recipe.green, entry.recipe.gray))
+    if entry.recipe.gray >= mod.NEVER_TRIVIAL then
+        -- special smelts: the game data defines no trivial point
+        lines[#lines + 1] = "|cff909090"
+            .. L["Never turns trivial - the skill-up chance decreases with skill but has no defined end."]
+            .. "|r"
+    end
     if entry.learned then
         lines[#lines + 1] = "|cff909090" .. L["Already known"] .. "|r"
     end
