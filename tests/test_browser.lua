@@ -102,6 +102,25 @@ test("display list: section headers carry counts, rows follow their header", fun
     assertTrue(headerCount >= 2, "expected Available now + Coming up headers")
 end)
 
+test("product mapping: crafted items known for item-producing recipes", function()
+    local ctx = T.boot("Vanilla")
+    local ns = ctx.ns
+    assertTrue(ns.CRAFT_PRODUCT ~= nil, "ProductData not loaded")
+    assertEqual(ns.CRAFT_PRODUCT[2963], 2996, "Bolt of Linen Cloth product wrong")
+    assertEqual(ns.CRAFT_PRODUCT[3275], 1251, "Linen Bandage product wrong")
+    -- every First Aid recipe creates an item - full coverage expected
+    -- (their spell icons all share one generic texture, so the product
+    -- icon is the only correct display)
+    for spellId in pairs(ns.FIRSTAID_RECIPES) do
+        assertTrue(ns.CRAFT_PRODUCT[spellId] ~= nil,
+            "First Aid recipe without product: " .. spellId)
+    end
+    for spellId, itemId in pairs(ns.CRAFT_PRODUCT) do
+        assertTrue(type(spellId) == "number" and type(itemId) == "number",
+            "non-numeric product entry")
+    end
+end)
+
 test("source tag: primary kind as colored word plus +N for the rest", function()
     local ctx = T.boot("Vanilla")
     local ns = ctx.ns

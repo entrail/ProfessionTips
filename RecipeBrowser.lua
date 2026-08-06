@@ -203,6 +203,20 @@ end
 -- triggers a refresh (registered on the overlay).
 local TEMP_ICON_FILE_ID = 136235
 local function RecipeIcon(spellId)
+    -- prefer the CRAFTED ITEM's icon (Data/ProductData.lua) - like
+    -- Blizzard's own trade skill list. Craft SPELL icons are unreliable:
+    -- all First Aid bandages share one generic texture, Engineering
+    -- spell records never resolve past the placeholder (live findings
+    -- 2026-08-06). Item icons come from GetItemInfoInstant's local data,
+    -- no server round trip.
+    local product = ns.CRAFT_PRODUCT and ns.CRAFT_PRODUCT[spellId]
+    if product then
+        local icon = GetItemIcon and GetItemIcon(product)
+        if not icon and GetItemInfoInstant then
+            icon = select(5, GetItemInfoInstant(product))
+        end
+        if icon then return icon end
+    end
     local tex = GetSpellTexture(spellId)
     local placeholder = not tex or tex == TEMP_ICON_FILE_ID
         or (type(tex) == "string" and tex:lower():find("temp", 1, true) ~= nil)
@@ -268,7 +282,37 @@ local function ShowRecipeTooltip(entry, anchor)
             GameTooltip:AddLine(line, 1, 1, 1, true)
         end
     end
+    if ns.CRAFT_PRODUCT and ns.CRAFT_PRODUCT[entry.spell] then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L["<Hold Shift for the crafted item>"], 0.5, 0.5, 0.5)
+    end
     GameTooltip:Show()
+end
+
+-- The real item tooltip of the crafted product. Narrow mode: hovering a
+-- row while SHIFT is held swaps to it (you cannot hover into a tooltip);
+-- wide mode: hovering the detail pane's header shows it directly.
+local function ShowProductTooltip(product, anchor)
+    GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
+    if GameTooltip.SetItemByID then
+        GameTooltip:SetItemByID(product)
+    else
+        GameTooltip:SetHyperlink("item:" .. product)
+    end
+    GameTooltip:Show()
+end
+
+local hoveredRow -- row currently under the mouse (narrow-mode tooltips)
+
+local function UpdateRowTooltip(row)
+    local entry = row.entry
+    if not entry then return end
+    local product = ns.CRAFT_PRODUCT and ns.CRAFT_PRODUCT[entry.spell]
+    if product and IsShiftKeyDown() then
+        ShowProductTooltip(product, row)
+    else
+        ShowRecipeTooltip(entry, row)
+    end
 end
 
 local RefreshDetail -- forward declaration
@@ -327,10 +371,14 @@ local function GetRow(i)
         -- wide mode has the detail pane - no tooltip on top of it
         -- (user request 2026-08-06)
         if self.entry and not (detailFrame and detailFrame:IsShown()) then
-            ShowRecipeTooltip(self.entry, self)
+            hoveredRow = self
+            UpdateRowTooltip(self)
         end
     end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnLeave", function(self)
+        if hoveredRow == self then hoveredRow = nil end
+        GameTooltip:Hide()
+    end)
     row:SetScript("OnClick", OnRowClick)
     rows[i] = row
     return row
@@ -459,6 +507,22 @@ local function EnsureDetail()
     w.body:SetPoint("RIGHT", detailFrame, "RIGHT", -10, 0)
     w.body:SetJustifyH("LEFT")
     w.body:SetSpacing(3)
+
+    -- hovering the header (icon + name) shows the crafted item's real
+    -- tooltip (user request 2026-08-06); shift-click links it to chat
+    w.hover = CreateFrame("Button", nil, detailFrame)
+    w.hover:SetPoint("TOPLEFT", w.icon, "TOPLEFT", 0, 0)
+    w.hover:SetPoint("BOTTOMRIGHT", w.name, "BOTTOMRIGHT", 0, 0)
+    w.hover:SetScript("OnEnter", function(self)
+        if self.product then ShowProductTooltip(self.product, self) end
+    end)
+    w.hover:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    w.hover:SetScript("OnClick", function(self)
+        if self.product and IsModifiedClick and IsModifiedClick("CHATLINK") then
+            local link = select(2, GetItemInfo(self.product))
+            if link then ChatEdit_InsertLink(link) end
+        end
+    end)
 end
 
 local function FindEntry(spellId)
@@ -472,6 +536,8 @@ function RefreshDetail() -- assigns the forward-declared local
     local mod = ns.ProfessionTips
     local w = detailWidgets
     local entry = selectedSpell and FindEntry(selectedSpell)
+    w.hover.product = entry and ns.CRAFT_PRODUCT
+        and ns.CRAFT_PRODUCT[entry.spell] or nil
     if not entry then
         w.icon:SetTexture(nil)
         w.name:SetText(L["Select a recipe"])
@@ -618,7 +684,16 @@ local function EnsureOverlay()
     local refreshPending = false
     overlay:RegisterEvent("GET_ITEM_INFO_RECEIVED")
     overlay:RegisterEvent("SPELL_DATA_LOAD_RESULT")
-    overlay:SetScript("OnEvent", function()
+    overlay:RegisterEvent("MODIFIER_STATE_CHANGED")
+    overlay:SetScript("OnEvent", function(_, event)
+        -- pressing/releasing Shift while hovering a row swaps between
+        -- the recipe info and the crafted item's tooltip live
+        if event == "MODIFIER_STATE_CHANGED" then
+            if hoveredRow and hoveredRow.entry and hoveredRow:IsMouseOver() then
+                UpdateRowTooltip(hoveredRow)
+            end
+            return
+        end
         if refreshPending or not overlay:IsShown() then return end
         refreshPending = true
         C_Timer.After(0.25, function()

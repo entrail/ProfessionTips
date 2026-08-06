@@ -102,7 +102,8 @@ S(3399, {{k="q", item=3736, quest=564, name="Costly Menace", zone="Hillsbrad Foo
 S(24418, {{k="v", item=20075, cost=1882, npc=4879, name="Ogg'marr", zone="Dustwallow Marsh", faction="Horde"}}) -- Heavy Crocolisk Stew
 S(3400, {{k="q", item=3737, quest=555, name="Soothing Turtle Bisque", zone="Hillsbrad Foothills", faction="Alliance"},
          {k="q", item=3737, quest=7321, name="Soothing Turtle Bisque", zone="Hillsbrad Foothills", faction="Horde"}}) -- Soothing Turtle Bisque
-S(4094, {{k="v", item=4609, cost=1000, npc=12246, name="Super-Seller 680", zone="Desolace", limited=true},
+S(4094, {{k="v", item=4609, cost=1052, npc=2814, name="Narj Deepslice", zone="Arathi Highlands", faction="Alliance"},
+         {k="v", item=4609, cost=1000, npc=12246, name="Super-Seller 680", zone="Desolace", limited=true},
          {k="q", item=4609, quest=703, name="Barbecued Buzzard Wings", zone="Badlands"}}) -- Barbecued Buzzard Wing
 S(7213, {{k="v", item=6039, cost=5000, npc=2664, name="Kelsey Yance", zone="Stranglethorn Vale"}}) -- Giant Clam Scorcho
 S(7828, {{k="v", item=6369, cost=2315, npc=2664, name="Kelsey Yance", zone="Stranglethorn Vale"},

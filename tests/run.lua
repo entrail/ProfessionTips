@@ -17,6 +17,7 @@ local COMMON_HEAD = {
     "Locales/ptBR.lua",
 }
 local COMMON_TAIL = {
+    "Data/ProductData.lua",
     "Data/FactionData.lua",
     "Options.lua",
     "ProfessionTips.lua",
