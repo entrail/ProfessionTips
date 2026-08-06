@@ -80,25 +80,62 @@ test("model flags faction locks; the default filter hides other-faction recipes"
         "Alliance misses its own recipe")
 end)
 
-test("faction filter modes: mine / all / neutral", function()
+test("faction checkboxes: default my faction, toggles, none = shared only", function()
     local ctx = T.boot("Vanilla", function(m) m.state.faction = "Horde" end)
-    local ns, prof = ctx.ns, nil
-    prof = profByPrefix(ctx.ns, "COOKING")
+    local ns = ctx.ns
+    local prof = profByPrefix(ns, "COOKING")
 
-    ns.db.browserFaction = "all"
+    -- unset default resolves to the character's own faction
+    assertTrue(ns.BrowserFactionShown("Horde"), "own faction not shown by default")
+    assertFalse(ns.BrowserFactionShown("Alliance"), "other faction shown by default")
+    assertFalse(listHas(ns.BrowserBuildList(prof, 300), 2542),
+        "Alliance-only recipe listed by default on a Horde character")
+
+    -- ticking Alliance brings the other faction's exclusives in
+    ns.BrowserToggleFaction("Alliance")
+    assertTrue(ns.BrowserFactionShown("Alliance"), "Alliance toggle did not apply")
+    assertTrue(ns.BrowserFactionShown("Horde"), "own faction lost on toggle")
     assertTrue(listHas(ns.BrowserBuildList(prof, 300), 2542),
-        "'all' must list other-faction recipes")
+        "Alliance-only recipe missing after ticking Alliance")
 
-    ns.db.browserFaction = "neutral"
-    local neutral = ns.BrowserBuildList(prof, 300)
-    assertFalse(listHas(neutral, 2542), "'neutral' must drop faction-locked recipes")
-    for _, item in ipairs(neutral) do
+    -- unticking both leaves only recipes BOTH factions can obtain
+    ns.BrowserToggleFaction("Alliance")
+    ns.BrowserToggleFaction("Horde")
+    local shared = ns.BrowserBuildList(prof, 300)
+    assertTrue(#shared > 0, "shared-only list is empty")
+    for _, item in ipairs(shared) do
         if item.entry then
             assertTrue(item.entry.faction == nil,
-                "'neutral' listed a faction-locked recipe: " .. item.entry.spell)
+                "faction-locked recipe listed with both boxes off: " .. item.entry.spell)
         end
     end
-    ns.db.browserFaction = "mine"
+
+    ns.db.browserFactions = nil -- back to the default
+end)
+
+test("migration: the old mine/all/neutral setting maps onto the checkboxes", function()
+    -- a saved-variables table from before 2026-08-06, as the game would
+    -- hand it to us at load
+    local function bootWith(stored)
+        return T.boot("Vanilla", function(m)
+            m.state.faction = "Horde"
+            m.__env.ProfessionTipsDB = { browserFaction = stored }
+        end)
+    end
+
+    local all = bootWith("all").ns
+    assertTrue(all.BrowserFactionShown("Alliance") and all.BrowserFactionShown("Horde"),
+        "'all' did not migrate to both factions")
+    assertTrue(all.db.browserFaction == nil, "old key not cleared")
+
+    local neutral = bootWith("neutral").ns
+    assertFalse(neutral.BrowserFactionShown("Alliance"), "'neutral' kept Alliance")
+    assertFalse(neutral.BrowserFactionShown("Horde"), "'neutral' kept Horde")
+
+    local mine = bootWith("mine").ns
+    assertTrue(mine.BrowserFactionShown("Horde"), "'mine' lost the own faction")
+    assertFalse(mine.BrowserFactionShown("Alliance"), "'mine' gained the other faction")
+    assertTrue(mine.db.browserFactions == nil, "'mine' should stay on the nil default")
 end)
 
 test("faction mark: colored initial only for locked recipes", function()

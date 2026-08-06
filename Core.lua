@@ -29,9 +29,11 @@ local defaults = {
     -- browser quick filters: one toggle per source kind (trainer, vendor,
     -- drop, world drop, quest), all on = no source filtering
     browserFilters = { t = true, v = true, d = true, w = true, q = true },
-    -- "mine" (obtainable by my faction) / "all" (other faction marked) /
-    -- "neutral" (only recipes both factions can get)
-    browserFaction = "mine",
+    -- Which faction-EXCLUSIVE recipes to list (recipes both factions can
+    -- obtain are always listed). nil = default "only my own faction",
+    -- resolved per character; once the player picks, a table
+    -- { Alliance = bool, Horde = bool } is stored.
+    browserFactions = nil,
     browserDismissedCollapsed = true,
     -- dismissed recipes per profession prefix: dismissed[PREFIX][spellId]
     dismissed = {},

@@ -180,6 +180,26 @@ local function FactionMark(entry)
 end
 ns.BrowserFactionMark = FactionMark -- exposed for tests
 
+-- Faction-exclusive recipes are listed per faction checkbox (user
+-- request 2026-08-06 - clearer than the old mine/all/neutral cycle):
+-- unset = "my own faction only", resolved per character; both unchecked
+-- = only recipes BOTH factions can obtain.
+function ns.BrowserFactionShown(faction)
+    local cfg = ns.db.browserFactions
+    if not cfg then return faction == PlayerFaction() end
+    return cfg[faction] == true
+end
+
+function ns.BrowserToggleFaction(faction)
+    local cfg = ns.db.browserFactions
+    if not cfg then -- materialize the effective default, then flip
+        cfg = { Alliance = false, Horde = false }
+        cfg[PlayerFaction() or "Alliance"] = true
+        ns.db.browserFactions = cfg
+    end
+    cfg[faction] = not cfg[faction]
+end
+
 -- Crest + the localized faction name in faction colors, for text lines
 -- (info block, source lines).
 local function FactionLabel(faction)
@@ -584,11 +604,10 @@ end
 -- ("?") stay visible; filtering by kind deliberately hides them, since
 -- they match no requested kind.
 local function PassesFilters(entry)
-    local mode = ns.db.browserFaction or "mine"
-    if mode == "neutral" then
-        if entry.faction then return false end
-    elseif mode ~= "all" then -- "mine"
-        if entry.faction and entry.faction ~= PlayerFaction() then return false end
+    -- recipes both factions can obtain are always listed; the faction
+    -- checkboxes only decide which EXCLUSIVE ones come along
+    if entry.faction and not ns.BrowserFactionShown(entry.faction) then
+        return false
     end
 
     local f = ns.db.browserFilters or {}
@@ -981,21 +1000,61 @@ local function EnsureOverlay()
         end
     end
 
-    -- faction cycle: mine -> all -> neutral
+    -- faction: dropdown with one checkbox per faction (recipes both
+    -- factions can get are always listed)
     do
-        local btn = NewFilterButton(L["Faction"], L["Which recipes to list: only what your faction can obtain, all (other-faction ones marked), or only recipes both factions can get."],
-            function()
-                local order = { mine = "all", all = "neutral", neutral = "mine" }
-                ns.db.browserFaction = order[ns.db.browserFaction or "mine"] or "mine"
+        local dropdown = CreateFrame("Frame", "ProfessionTipsBrowserFactionMenu",
+            filterBar, "UIDropDownMenuTemplate")
+        dropdown:Hide()
+        local btn
+        local function InitMenu(_, level)
+            if not UIDropDownMenu_CreateInfo then return end
+            for _, faction in ipairs({ "Alliance", "Horde" }) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = (FACTION_ICON[faction] or "") .. " " .. FactionName(faction)
+                info.isNotRadio = true
+                info.keepShownOnClick = true
+                info.checked = ns.BrowserFactionShown(faction)
+                info.func = function()
+                    ns.BrowserToggleFaction(faction)
+                    RefreshBrowserList()
+                end
+                UIDropDownMenu_AddButton(info, level)
+            end
+        end
+        if UIDropDownMenu_Initialize then
+            UIDropDownMenu_Initialize(dropdown, InitMenu, "MENU")
+        end
+
+        btn = NewFilterButton(L["Faction"],
+            L["Which faction-exclusive recipes to list. Recipes both factions can obtain are always shown."],
+            function(self)
+                if UIDropDownMenu_Initialize and ToggleDropDownMenu then
+                    ToggleDropDownMenu(1, nil, dropdown, self, 0, 0)
+                else -- no dropdown API: cycle mine -> both -> none
+                    local a, h = ns.BrowserFactionShown("Alliance"), ns.BrowserFactionShown("Horde")
+                    if a and h then
+                        ns.db.browserFactions = { Alliance = false, Horde = false }
+                    elseif not a and not h then
+                        ns.db.browserFactions = nil
+                    else
+                        ns.db.browserFactions = { Alliance = true, Horde = true }
+                    end
+                end
             end)
         btn.Sync = function(self)
-            local mode = ns.db.browserFaction or "mine"
-            local text = (mode == "all" and L["Faction: all"])
-                or (mode == "neutral" and L["Faction: neutral"])
-                or L["Faction: mine"]
-            self:SetText(text)
-            self:SetWidth(math.max(34, self:GetFontString():GetStringWidth() + 14))
-            StyleToggle(self, mode ~= "mine")
+            local marks = ""
+            for _, faction in ipairs({ "Alliance", "Horde" }) do
+                if ns.BrowserFactionShown(faction) then
+                    marks = marks .. (FACTION_ICON[faction] or "")
+                end
+            end
+            if marks == "" then marks = "|cff909090" .. L["none"] .. "|r" end
+            self:SetText(L["Faction"] .. ": " .. marks)
+            self:SetWidth(math.max(34, self:GetFontString():GetStringWidth() + 16))
+            -- highlighted while anything but the plain "my faction" set
+            local mine = ns.db.browserFactions ~= nil
+            StyleToggle(self, mine)
         end
     end
 
@@ -1178,6 +1237,18 @@ local function TryHookCraft()
 end
 
 ns.OnInit(function()
+    -- one-time migration of the old mine/all/neutral cycle setting to
+    -- the per-faction checkboxes (2026-08-06)
+    local old = ns.db.browserFaction
+    if old ~= nil then
+        if old == "all" then
+            ns.db.browserFactions = { Alliance = true, Horde = true }
+        elseif old == "neutral" then
+            ns.db.browserFactions = { Alliance = false, Horde = false }
+        end -- "mine" is the nil default
+        ns.db.browserFaction = nil
+    end
+
     local watcher = CreateFrame("Frame")
     watcher:RegisterEvent("ADDON_LOADED")
     watcher:RegisterEvent("TRADE_SKILL_SHOW")
