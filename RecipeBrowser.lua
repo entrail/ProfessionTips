@@ -74,34 +74,64 @@ local function SourceTag(sources)
 end
 ns.BrowserSourceTag = SourceTag -- exposed for tests
 
+-- Which faction a recipe is locked to, or nil when both can get it.
+-- Two sources of truth: the curated ns.RECIPE_FACTION list, and the
+-- source data itself (every single source tagged with the same faction
+-- means only that faction can obtain it).
+local function EntryFaction(spellId, sources)
+    local locked = ns.RECIPE_FACTION and ns.RECIPE_FACTION[spellId]
+    if locked then return locked end
+    if not sources or #sources == 0 then return nil end
+    local f
+    for _, src in ipairs(sources) do
+        if not src.faction then return nil end
+        if f and src.faction ~= f then return nil end
+        f = src.faction
+    end
+    return f
+end
+
+-- A recipe locked to the OTHER faction is not automatically hopeless:
+-- when it is taught by an ITEM (pattern/recipe/plans), that item can
+-- travel through the neutral auction house (Booty Bay / Gadgetzan) -
+-- unless it is soulbound, which the data does not record. Recipes the
+-- other faction only learns DIRECTLY (quest turn-ins without an item)
+-- can never cross. (user request 2026-08-06)
+local function CrossFactionItem(sources)
+    for _, src in ipairs(sources or {}) do
+        if src.item then return true end
+    end
+    return false
+end
+
 -- Builds the section model for one profession at a given skill rank:
 --   { available = {entry...}, upcoming = {...}, known = {...} }
--- entry = { spell, req, recipe, sources, learned }; sections sorted by
--- required skill (then spell ID for a stable order). Faction-locked
--- recipes are skipped entirely (same rule as the tooltips).
+-- entry = { spell, req, recipe, sources, learned, faction, crossAH };
+-- sections sorted by required skill (then spell ID for a stable order).
+-- Faction-locked recipes are INCLUDED and flagged - the display filter
+-- decides what is shown (default: only what my faction can obtain).
 function ns.BuildBrowserModel(prof, skill)
     local recipes = ns[prof.recipes]
     local sources = ns[prof.prefix .. "_SOURCES"]
     if not recipes then return nil end
-    local faction = UnitFactionGroup("player")
     local model = { available = {}, upcoming = {}, known = {} }
     for spellId, recipe in pairs(recipes) do
-        local locked = ns.RECIPE_FACTION and ns.RECIPE_FACTION[spellId]
-        if not (locked and faction and locked ~= faction) then
-            local entry = {
-                spell = spellId,
-                req = recipe.orange,
-                recipe = recipe,
-                sources = sources and sources[spellId],
-                learned = IsPlayerSpell(spellId),
-            }
-            if entry.learned then
-                model.known[#model.known + 1] = entry
-            elseif entry.req <= skill then
-                model.available[#model.available + 1] = entry
-            else
-                model.upcoming[#model.upcoming + 1] = entry
-            end
+        local srcList = sources and sources[spellId]
+        local entry = {
+            spell = spellId,
+            req = recipe.orange,
+            recipe = recipe,
+            sources = srcList,
+            learned = IsPlayerSpell(spellId),
+            faction = EntryFaction(spellId, srcList),
+        }
+        entry.crossAH = entry.faction ~= nil and CrossFactionItem(srcList)
+        if entry.learned then
+            model.known[#model.known + 1] = entry
+        elseif entry.req <= skill then
+            model.available[#model.available + 1] = entry
+        else
+            model.upcoming[#model.upcoming + 1] = entry
         end
     end
     local function bySkill(a, b)
@@ -146,6 +176,32 @@ local function SourceLine(src)
 end
 ns.BrowserSourceLine = SourceLine -- exposed for tests
 
+-- Faction colors + the localized faction name (FACTION_ALLIANCE /
+-- FACTION_HORDE are localized by the client).
+local FACTION_COLOR = { Alliance = "ff4a7fda", Horde = "ffe03030" }
+
+local playerFaction
+local function PlayerFaction()
+    playerFaction = playerFaction or UnitFactionGroup("player")
+    return playerFaction
+end
+
+local function FactionName(faction)
+    if faction == "Alliance" then return FACTION_ALLIANCE or "Alliance" end
+    return FACTION_HORDE or "Horde"
+end
+
+-- Compact row badge for faction-locked recipes: the first letter of the
+-- localized faction name in faction colors ("A" / "H" - "Allianz",
+-- "Alianza", "Horda" all work). Nothing for recipes both factions can
+-- obtain. (user request 2026-08-06)
+local function FactionMark(entry)
+    if not entry.faction then return "" end
+    return ("|c%s[%s]|r "):format(FACTION_COLOR[entry.faction] or "ffffffff",
+        string.sub(FactionName(entry.faction), 1, 1))
+end
+ns.BrowserFactionMark = FactionMark -- exposed for tests
+
 -- ---------------------------------------------------------------- state
 
 local module = {}
@@ -153,7 +209,10 @@ ns.RecipeBrowser = module
 
 local hosts = {} -- host frame -> { tab, getLine } (TradeSkillFrame / CraftFrame)
 local overlay, listFrame, scrollFrame, scrollContent, detailFrame
-local searchBox, showKnownCheck
+local searchBox, filterBar
+local filterButtons = {}
+local FILTER_KINDS = { "t", "v", "d", "w", "q" } -- bar order
+local FILTER_ROW_HEIGHT = 21
 local rows = {}
 local displayList = {}
 local searchFilter = ""
@@ -244,6 +303,39 @@ local function RequestItem(itemId)
     end
 end
 
+-- Dismissed ("hidden") recipes, account-wide per profession: a recipe
+-- you never intend to chase (a world-drop pattern, another faction's
+-- quest reward) moves to a collapsible section at the end of the list
+-- instead of cluttering the sections you act on. (user request
+-- 2026-08-06)
+local function DismissedSet(create)
+    local all = ns.db.dismissed
+    if not all then
+        if not create then return nil end
+        all = {}
+        ns.db.dismissed = all
+    end
+    local key = activeProf and activeProf.prefix
+    if not key then return nil end
+    local set = all[key]
+    if not set and create then
+        set = {}
+        all[key] = set
+    end
+    return set
+end
+
+local function IsDismissed(entry)
+    local set = DismissedSet(false)
+    return set ~= nil and set[entry.spell] == true
+end
+
+function ns.BrowserToggleDismiss(spellId)
+    local set = DismissedSet(true)
+    if not set then return end
+    set[spellId] = (not set[spellId]) or nil
+end
+
 -- The info block shared by the hover tooltip and the wide-mode detail
 -- pane (user request 2026-08-05: the tooltip should carry what the pane
 -- shows, so the default-size window loses nothing): requirement +
@@ -257,6 +349,18 @@ local function BuildInfoLines(entry)
         (L["Requires %d"]):format(entry.req),
         mod.FormatScale(entry.recipe.orange, entry.recipe.yellow,
             entry.recipe.green, entry.recipe.gray))
+    -- faction lock: what it means for THIS character
+    if entry.faction then
+        local color = FACTION_COLOR[entry.faction] or "ffffffff"
+        local line = ("|c%s%s|r"):format(color,
+            (L["%s only"]):format(FactionName(entry.faction)))
+        if entry.faction ~= PlayerFaction() then
+            line = line .. " - " .. (entry.crossAH
+                and L["your faction can only get it traded via the neutral auction house"]
+                or L["your faction cannot obtain this recipe"])
+        end
+        lines[#lines + 1] = line
+    end
     if entry.recipe.gray >= mod.NEVER_TRIVIAL then
         -- special smelts: the game data defines no trivial point
         lines[#lines + 1] = "|cff909090"
@@ -305,10 +409,12 @@ local function ShowRecipeTooltip(entry, anchor)
             GameTooltip:AddLine(line, 1, 1, 1, true)
         end
     end
+    GameTooltip:AddLine(" ")
     if ns.CRAFT_PRODUCT and ns.CRAFT_PRODUCT[entry.spell] then
-        GameTooltip:AddLine(" ")
         GameTooltip:AddLine(L["<Hold Shift for the crafted item>"], 0.5, 0.5, 0.5)
     end
+    GameTooltip:AddLine(IsDismissed(entry) and L["Right-click: show this recipe again"]
+        or L["Right-click: hide this recipe"], 0.5, 0.5, 0.5)
     GameTooltip:Show()
 end
 
@@ -340,9 +446,25 @@ end
 
 local RefreshDetail -- forward declaration
 
-local function OnRowClick(self)
+local RefreshBrowserList -- forward declaration (rebuild + redraw)
+
+local function OnRowClick(self, button)
+    -- section headers: only the dismissed one is collapsible
+    if self.headerSection == "dismissed" then
+        ns.db.browserDismissedCollapsed = not ns.db.browserDismissedCollapsed
+        RefreshBrowserList()
+        return
+    end
     local entry = self.entry
     if not entry then return end
+    -- right-click dismisses (and restores from the dismissed section)
+    if button == "RightButton" then
+        ns.BrowserToggleDismiss(entry.spell)
+        if selectedSpell == entry.spell then selectedSpell = nil end
+        GameTooltip:Hide()
+        RefreshBrowserList()
+        return
+    end
     if IsModifiedClick and IsModifiedClick("CHATLINK") and GetSpellLink then
         local link = GetSpellLink(entry.spell)
         if link then ChatEdit_InsertLink(link) end
@@ -364,6 +486,7 @@ local function GetRow(i)
     local row = rows[i]
     if row then return row end
     row = CreateFrame("Button", nil, scrollContent)
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     row:SetHeight(ROW_HEIGHT)
     row:SetPoint("TOPLEFT", 2, -(i - 1) * ROW_HEIGHT)
     row:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -2, -(i - 1) * ROW_HEIGHT)
@@ -437,22 +560,52 @@ local function MatchesSearch(entry)
     return strfind(strlower(RecipeName(entry.spell)), searchFilter, 1, true) ~= nil
 end
 
+-- Quick filters (user request 2026-08-06): source kinds, faction and the
+-- known-recipes toggle. Source filtering is only active while at least
+-- one kind is off - with everything on, recipes WITHOUT source data
+-- ("?") stay visible; filtering by kind deliberately hides them, since
+-- they match no requested kind.
+local function PassesFilters(entry)
+    local mode = ns.db.browserFaction or "mine"
+    if mode == "neutral" then
+        if entry.faction then return false end
+    elseif mode ~= "all" then -- "mine"
+        if entry.faction and entry.faction ~= PlayerFaction() then return false end
+    end
+
+    local f = ns.db.browserFilters or {}
+    if not (f.t and f.v and f.d and f.w and f.q) then
+        local ok = false
+        for _, src in ipairs(entry.sources or {}) do
+            if f[src.k] then ok = true break end
+        end
+        if not ok then return false end
+    end
+    return MatchesSearch(entry)
+end
+
 local function BuildDisplayList()
     wipe(displayList)
     if not activeProf then return end
     local model = ns.BuildBrowserModel(activeProf, activeSkill or 0)
     if not model then return end
 
+    local dismissed = {} -- pulled out of every section, listed at the end
+
     local function AddSection(headerText, list, color)
         local headerItem -- keep the header handle; #displayList moves on
         for _, entry in ipairs(list) do
-            if MatchesSearch(entry) then
-                if not headerItem then
-                    headerItem = { header = headerText, count = 0 }
-                    displayList[#displayList + 1] = headerItem
+            if PassesFilters(entry) then
+                if IsDismissed(entry) then
+                    dismissed[#dismissed + 1] = entry
+                else
+                    if not headerItem then
+                        headerItem = { header = headerText, count = 0 }
+                        displayList[#displayList + 1] = headerItem
+                    end
+                    headerItem.count = headerItem.count + 1
+                    displayList[#displayList + 1] = { entry = entry, color = color }
                 end
-                headerItem.count = headerItem.count + 1
-                displayList[#displayList + 1] = { entry = entry, color = color }
             end
         end
     end
@@ -461,6 +614,20 @@ local function BuildDisplayList()
     AddSection(L["Coming up"], model.upcoming, "upcoming")
     if ns.db.browserShowKnown then
         AddSection(L["Already known"], model.known, "known")
+    end
+
+    -- dismissed recipes live in a collapsible section at the very bottom
+    if #dismissed > 0 then
+        local collapsed = ns.db.browserDismissedCollapsed
+        displayList[#displayList + 1] = {
+            header = L["Dismissed"], count = #dismissed,
+            section = "dismissed", collapsed = collapsed,
+        }
+        if not collapsed then
+            for _, entry in ipairs(dismissed) do
+                displayList[#displayList + 1] = { entry = entry, color = "dismissed" }
+            end
+        end
     end
 
     -- pre-warm the item cache for every listed recipe's reagents so
@@ -489,13 +656,20 @@ local function RefreshRows()
         row:Show()
         if item.header then
             row.entry = nil
+            row.headerSection = item.section
             row.selected:Hide()
             row.icon:SetTexture(nil)
             row.text:SetPoint("LEFT", row.icon, "RIGHT", -14, 0) -- headers start at the row edge
-            row.text:SetText(("%s (%d)"):format(item.header, item.count))
+            local label = ("%s (%d)"):format(item.header, item.count)
+            if item.section == "dismissed" then
+                -- collapsible: arrow shows the state, click toggles
+                label = (item.collapsed and "|cffb0b0b0+|r " or "|cffb0b0b0-|r ") .. label
+            end
+            row.text:SetText(label)
             row.text:SetTextColor(0.95, 0.85, 0.4)
             row.right:SetText("")
         else
+            row.headerSection = nil
             local entry = item.entry
             row.entry = entry
             row.selected:SetShown(detailFrame and detailFrame:IsShown()
@@ -503,15 +677,18 @@ local function RefreshRows()
             row.icon:SetTexture(RecipeIcon(entry.spell))
             row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
             row.text:SetTextColor(1, 1, 1)
-            if item.color == "upcoming" then
-                row.text:SetText(RecipeName(entry.spell))
+            local name = FactionMark(entry) .. RecipeName(entry.spell)
+            if item.color == "dismissed" then
+                row.text:SetText("|cff707070" .. name .. "|r")
+            elseif item.color == "upcoming" then
+                row.text:SetText(name)
             else
                 -- available AND known: the difficulty color at the
                 -- current skill, matching the detail pane's recipe name
                 -- (user request 2026-08-06 - known rows were flat grey)
                 local diff = mod.DifficultyAt(activeSkill or 0, entry.recipe)
                 row.text:SetText(("|c%s%s|r"):format(
-                    mod.DIFFICULTY_COLOR[diff], RecipeName(entry.spell)))
+                    mod.DIFFICULTY_COLOR[diff], name))
             end
             local reqColor = entry.req <= (activeSkill or 0) and "ffffffff" or "ffff5050"
             row.right:SetText(("%s  |c%s%d|r"):format(SourceTag(entry.sources),
@@ -614,6 +791,28 @@ end
 
 -- Narrow: the list fills the overlay. Wide (Leatrix & co.): list on the
 -- left at its default proportions, detail pane in the remaining space.
+-- Flow-lays the filter buttons across the available width, wrapping to
+-- further rows when needed. Returns the bar's total height, so the list
+-- can be anchored beneath it in any window width.
+local function LayoutFilterBar(width)
+    if not filterBar or #filterButtons == 0 then return 0 end
+    local gap, rowsUsed, x = 3, 1, 0
+    for _, btn in ipairs(filterButtons) do
+        if btn.Sync then btn:Sync() end -- label/width may change (faction)
+        local w = btn:GetWidth()
+        if x > 0 and x + w > width then -- wrap
+            rowsUsed = rowsUsed + 1
+            x = 0
+        end
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", filterBar, "TOPLEFT", x, -(rowsUsed - 1) * FILTER_ROW_HEIGHT)
+        x = x + w + gap
+    end
+    local height = rowsUsed * FILTER_ROW_HEIGHT
+    filterBar:SetHeight(height)
+    return height
+end
+
 local function ApplyLayout()
     if not overlay or not activeHost then return end
     local wide = activeHost:GetWidth() >= WIDE_THRESHOLD
@@ -627,8 +826,12 @@ local function ApplyLayout()
     if overlayWidth == 0 then -- rect not resolved yet this frame
         overlayWidth = (activeHost:GetWidth() or 384) - 60
     end
+    -- header block (6 top inset + 30 high) + the wrapped filter bar
+    -- (2 gap) decide where the list starts
+    local barHeight = LayoutFilterBar(overlayWidth - 16)
+    local listTop = -(42 + barHeight)
     listFrame:ClearAllPoints()
-    listFrame:SetPoint("TOPLEFT", overlay, "TOPLEFT", 0, -38) -- below the header row
+    listFrame:SetPoint("TOPLEFT", overlay, "TOPLEFT", 0, listTop)
     listFrame:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", 0, 0)
     local listWidth
     if wide then
@@ -686,17 +889,12 @@ local function EnsureOverlay()
     overlay.skillText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlay.skillText:SetPoint("LEFT", 2, 0)
 
-    showKnownCheck = CreateFrame("CheckButton", "ProfessionTipsBrowserShowKnown",
-        header, "UICheckButtonTemplate")
-    showKnownCheck:SetSize(24, 24)
-    showKnownCheck:SetPoint("RIGHT", header, "RIGHT", -70, 0)
-
-    -- stretches between the skill text and the Known toggle, so it
-    -- shrinks instead of colliding on the default 384px frame
+    -- search stretches from the skill text to the header's right edge;
+    -- every toggle lives in the filter bar below (user request 2026-08-06)
     searchBox = CreateFrame("EditBox", "ProfessionTipsBrowserSearch", header, "SearchBoxTemplate")
     searchBox:SetHeight(22)
     searchBox:SetPoint("LEFT", overlay.skillText, "RIGHT", 18, 0)
-    searchBox:SetPoint("RIGHT", showKnownCheck, "LEFT", -12, 0)
+    searchBox:SetPoint("RIGHT", header, "RIGHT", -4, 0)
     searchBox:SetAutoFocus(false)
     searchBox:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
@@ -707,17 +905,87 @@ local function EnsureOverlay()
             RefreshRows()
         end
     end)
-    local label = _G[showKnownCheck:GetName() .. "Text"]
-    if label then
-        label:SetText(L["Known"])
-        label:SetFontObject(GameFontNormalSmall)
+
+    -- ---- quick filter bar: source kinds, faction, known -------------
+    -- Buttons size themselves to their (localized) label and flow-wrap,
+    -- so the bar fits the default 384px window and spreads out on wide
+    -- ones without a second layout.
+    filterBar = CreateFrame("Frame", nil, overlay)
+    filterBar:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
+    filterBar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -2)
+    filterBar:SetHeight(FILTER_ROW_HEIGHT)
+
+    local function StyleToggle(btn, active)
+        if active then
+            btn:LockHighlight()
+            btn:GetFontString():SetTextColor(1, 1, 1)
+        else
+            btn:UnlockHighlight()
+            btn:GetFontString():SetTextColor(0.5, 0.5, 0.5)
+        end
     end
-    showKnownCheck:SetChecked(ns.db.browserShowKnown)
-    showKnownCheck:SetScript("OnClick", function(self)
-        ns.db.browserShowKnown = self:GetChecked() and true or false
-        BuildDisplayList()
-        RefreshRows()
-    end)
+
+    local function NewFilterButton(label, tooltip, onClick)
+        local btn = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
+        btn:SetHeight(19)
+        btn:SetText(label)
+        btn:SetNormalFontObject(GameFontNormalSmall)
+        btn:SetHighlightFontObject(GameFontHighlightSmall)
+        btn:SetWidth(math.max(34, btn:GetFontString():GetStringWidth() + 14))
+        btn:SetScript("OnClick", function(self)
+            onClick(self)
+            BuildDisplayList()
+            RefreshRows()
+            if detailFrame and detailFrame:IsShown() then RefreshDetail() end
+        end)
+        btn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        filterButtons[#filterButtons + 1] = btn
+        return btn
+    end
+
+    -- one toggle per source kind, colored like the row tags
+    for _, kind in ipairs(FILTER_KINDS) do
+        local btn = NewFilterButton(SourceWord(kind),
+            (L["Show recipes from this source (%s)"]):format(SourceWord(kind)),
+            function()
+                local f = ns.db.browserFilters
+                f[kind] = not f[kind]
+            end)
+        btn.kind = kind
+        btn.Sync = function(self)
+            StyleToggle(self, ns.db.browserFilters[self.kind])
+        end
+    end
+
+    -- faction cycle: mine -> all -> neutral
+    do
+        local btn = NewFilterButton(L["Faction"], L["Which recipes to list: only what your faction can obtain, all (other-faction ones marked), or only recipes both factions can get."],
+            function()
+                local order = { mine = "all", all = "neutral", neutral = "mine" }
+                ns.db.browserFaction = order[ns.db.browserFaction or "mine"] or "mine"
+            end)
+        btn.Sync = function(self)
+            local mode = ns.db.browserFaction or "mine"
+            local text = (mode == "all" and L["Faction: all"])
+                or (mode == "neutral" and L["Faction: neutral"])
+                or L["Faction: mine"]
+            self:SetText(text)
+            self:SetWidth(math.max(34, self:GetFontString():GetStringWidth() + 14))
+            StyleToggle(self, mode ~= "mine")
+        end
+    end
+
+    -- known recipes (moved out of the header, user request 2026-08-06)
+    do
+        local btn = NewFilterButton(L["Known"], L["Also list recipes you already know."],
+            function() ns.db.browserShowKnown = not ns.db.browserShowKnown end)
+        btn.Sync = function(self) StyleToggle(self, ns.db.browserShowKnown) end
+    end
 
     -- list block: scroll frame with the row pool
     listFrame = CreateFrame("Frame", nil, overlay)
@@ -796,6 +1064,16 @@ local function RefreshBrowser()
     overlay.skillText:SetText(("%s |cffffffff%d/%d|r"):format(
         RecipeName(activeProf.skillSpell), activeSkill or 0, activeMax or 0))
     ApplyLayout() -- sizes first: rows anchor to the scroll child's edges
+    BuildDisplayList()
+    RefreshRows()
+    if detailFrame and detailFrame:IsShown() then RefreshDetail() end
+end
+
+-- assigns the forward-declared local: rebuild the list and redraw (used
+-- by the dismiss/collapse handlers, which change list CONTENT)
+function RefreshBrowserList()
+    if not overlay or not overlay:IsShown() then return end
+    ApplyLayout()
     BuildDisplayList()
     RefreshRows()
     if detailFrame and detailFrame:IsShown() then RefreshDetail() end

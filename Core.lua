@@ -26,6 +26,15 @@ local defaults = {
     modifier = "NONE",    -- only show while holding NONE/SHIFT/CTRL/ALT
     recipeBrowser = true, -- side tab + recipe browser on profession windows
     browserShowKnown = false, -- browser: also list already-known recipes
+    -- browser quick filters: one toggle per source kind (trainer, vendor,
+    -- drop, world drop, quest), all on = no source filtering
+    browserFilters = { t = true, v = true, d = true, w = true, q = true },
+    -- "mine" (obtainable by my faction) / "all" (other faction marked) /
+    -- "neutral" (only recipes both factions can get)
+    browserFaction = "mine",
+    browserDismissedCollapsed = true,
+    -- dismissed recipes per profession prefix: dismissed[PREFIX][spellId]
+    dismissed = {},
     -- per profession: consider only recipes the character has learned
     alchemyOnlyLearned = false,
     blacksmithingOnlyLearned = false,

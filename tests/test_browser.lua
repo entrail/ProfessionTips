@@ -48,26 +48,121 @@ test("model splits into available/upcoming/known and sorts by skill", function()
     end
 end)
 
-test("model drops recipes locked to the other faction", function()
-    -- 2542 Goretusk Liver Pie is Alliance-only cooking (FactionData)
-    local function hasRecipe(model, spellId)
-        for _, section in ipairs({ "available", "upcoming", "known" }) do
-            for _, entry in ipairs(model[section]) do
-                if entry.spell == spellId then return true end
-            end
+local function findEntry(model, spellId)
+    for _, section in ipairs({ "available", "upcoming", "known" }) do
+        for _, entry in ipairs(model[section]) do
+            if entry.spell == spellId then return entry end
         end
-        return false
     end
+end
 
+local function listHas(list, spellId)
+    for _, item in ipairs(list) do
+        if item.entry and item.entry.spell == spellId then return true end
+    end
+    return false
+end
+
+test("model flags faction locks; the default filter hides other-faction recipes", function()
+    -- 2542 Goretusk Liver Pie is Alliance-only cooking (FactionData)
     local horde = T.boot("Vanilla", function(m) m.state.faction = "Horde" end)
-    local hordeModel = horde.ns.BuildBrowserModel(
-        profByPrefix(horde.ns, "COOKING"), 300)
-    assertFalse(hasRecipe(hordeModel, 2542), "Horde model contains Alliance-only recipe")
+    local prof = profByPrefix(horde.ns, "COOKING")
+    local entry = findEntry(horde.ns.BuildBrowserModel(prof, 300), 2542)
+    assertTrue(entry ~= nil, "model must still contain the recipe (flagged)")
+    assertEqual(entry.faction, "Alliance", "faction lock not detected")
+
+    -- default filter "mine": hidden for Horde, listed for Alliance
+    assertFalse(listHas(horde.ns.BrowserBuildList(prof, 300), 2542),
+        "Alliance-only recipe listed for Horde under the default filter")
 
     local alli = T.boot("Vanilla", function(m) m.state.faction = "Alliance" end)
-    local alliModel = alli.ns.BuildBrowserModel(
-        profByPrefix(alli.ns, "COOKING"), 300)
-    assertTrue(hasRecipe(alliModel, 2542), "Alliance model misses its own recipe")
+    assertTrue(listHas(alli.ns.BrowserBuildList(profByPrefix(alli.ns, "COOKING"), 300), 2542),
+        "Alliance misses its own recipe")
+end)
+
+test("faction filter modes: mine / all / neutral", function()
+    local ctx = T.boot("Vanilla", function(m) m.state.faction = "Horde" end)
+    local ns, prof = ctx.ns, nil
+    prof = profByPrefix(ctx.ns, "COOKING")
+
+    ns.db.browserFaction = "all"
+    assertTrue(listHas(ns.BrowserBuildList(prof, 300), 2542),
+        "'all' must list other-faction recipes")
+
+    ns.db.browserFaction = "neutral"
+    local neutral = ns.BrowserBuildList(prof, 300)
+    assertFalse(listHas(neutral, 2542), "'neutral' must drop faction-locked recipes")
+    for _, item in ipairs(neutral) do
+        if item.entry then
+            assertTrue(item.entry.faction == nil,
+                "'neutral' listed a faction-locked recipe: " .. item.entry.spell)
+        end
+    end
+    ns.db.browserFaction = "mine"
+end)
+
+test("faction mark: colored initial only for locked recipes", function()
+    local ctx = T.boot("Vanilla")
+    local ns = ctx.ns
+    assertEqual(ns.BrowserFactionMark({ faction = nil }), "",
+        "unlocked recipes must carry no marker")
+    local mark = ns.BrowserFactionMark({ faction = "Alliance" })
+    assertTrue(mark:find("A", 1, true) ~= nil, "no faction initial: " .. mark)
+    assertTrue(mark:find("4a7fda", 1, true) ~= nil, "no faction color: " .. mark)
+end)
+
+test("source filters hide non-matching recipes", function()
+    local ctx = T.boot("Vanilla")
+    local ns = ctx.ns
+    local prof = profByPrefix(ns, "FIRSTAID")
+    -- BrowserBuildList returns the module's reused table, so snapshot the
+    -- size before rebuilding with the filter applied
+    local allCount = #ns.BrowserBuildList(prof, 300)
+    ns.db.browserFilters = { t = true, v = false, d = false, w = false, q = false }
+    local trainerOnly = ns.BrowserBuildList(prof, 300)
+    assertTrue(#trainerOnly > 0, "trainer filter emptied the list")
+    assertTrue(#trainerOnly < allCount, "filter changed nothing")
+    for _, item in ipairs(trainerOnly) do
+        if item.entry then
+            local hasTrainer = false
+            for _, src in ipairs(item.entry.sources or {}) do
+                if src.k == "t" then hasTrainer = true end
+            end
+            assertTrue(hasTrainer, "non-trainer recipe survived the filter")
+        end
+    end
+    ns.db.browserFilters = { t = true, v = true, d = true, w = true, q = true }
+end)
+
+test("dismissing moves a recipe into the collapsible dismissed section", function()
+    local ctx = T.boot("Vanilla")
+    local ns = ctx.ns
+    local prof = profByPrefix(ns, "FIRSTAID")
+    local list = ns.BrowserBuildList(prof, 300)
+    local victim
+    for _, item in ipairs(list) do
+        if item.entry then victim = item.entry.spell break end
+    end
+    assertTrue(victim ~= nil, "no recipe to dismiss")
+
+    ns.BrowserToggleDismiss(victim)
+    ns.db.browserDismissedCollapsed = true
+    local collapsed = ns.BrowserBuildList(prof, 300)
+    assertFalse(listHas(collapsed, victim), "dismissed recipe still in a normal section")
+    local header
+    for _, item in ipairs(collapsed) do
+        if item.header and item.section == "dismissed" then header = item end
+    end
+    assertTrue(header ~= nil, "no dismissed section header")
+    assertEqual(header.count, 1, "dismissed count wrong")
+
+    ns.db.browserDismissedCollapsed = false
+    assertTrue(listHas(ns.BrowserBuildList(prof, 300), victim),
+        "expanded dismissed section must list the recipe")
+
+    ns.BrowserToggleDismiss(victim) -- restore
+    assertTrue(listHas(ns.BrowserBuildList(prof, 300), victim),
+        "restored recipe missing from the normal sections")
 end)
 
 test("display list: section headers carry counts, rows follow their header", function()
