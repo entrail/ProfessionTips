@@ -229,6 +229,21 @@ local function RecipeIcon(spellId)
     return tex
 end
 
+-- Reagent names resolve through the async item cache. Request each item
+-- once per session; the display list PRE-warms every listed recipe's
+-- reagents on build, so names are usually cached before the first hover
+-- (live finding 2026-08-06: tooltips opened with "... x1" placeholders).
+local requestedItems = {}
+local function RequestItem(itemId)
+    if requestedItems[itemId] then return end
+    requestedItems[itemId] = true
+    if C_Item and C_Item.RequestLoadItemDataByID then
+        pcall(C_Item.RequestLoadItemDataByID, itemId)
+    else
+        GetItemInfo(itemId) -- the query itself triggers the server request
+    end
+end
+
 -- The info block shared by the hover tooltip and the wide-mode detail
 -- pane (user request 2026-08-05: the tooltip should carry what the pane
 -- shows, so the default-size window loses nothing): requirement +
@@ -262,8 +277,10 @@ local function BuildInfoLines(entry)
     end
     table.sort(reagents, function(a, b) return a.id < b.id end)
     for _, r in ipairs(reagents) do
-        -- nil until the item cache answers; GET_ITEM_INFO_RECEIVED refreshes
+        -- nil until the item cache answers; GET_ITEM_INFO_RECEIVED
+        -- re-renders the tooltip/pane once the name arrives
         local name = GetItemInfo(r.id)
+        if not name then RequestItem(r.id) end
         lines[#lines + 1] = ("%s x%d"):format(name or "|cff909090...|r", r.count)
     end
     return lines
@@ -415,6 +432,16 @@ local function BuildDisplayList()
     AddSection(L["Coming up"], model.upcoming, "upcoming")
     if ns.db.browserShowKnown then
         AddSection(L["Already known"], model.known, "known")
+    end
+
+    -- pre-warm the item cache for every listed recipe's reagents so
+    -- tooltips rarely open with "..." placeholders
+    for _, item in ipairs(displayList) do
+        if item.entry then
+            for itemId in pairs(item.entry.recipe.reagents) do
+                RequestItem(itemId)
+            end
+        end
     end
 end
 
@@ -701,6 +728,12 @@ local function EnsureOverlay()
             if overlay:IsShown() then
                 RefreshRows()
                 if detailFrame and detailFrame:IsShown() then RefreshDetail() end
+                -- re-render an open row tooltip too - reagent names may
+                -- have just resolved (live finding 2026-08-06)
+                if hoveredRow and hoveredRow.entry and hoveredRow:IsMouseOver()
+                    and GameTooltip:IsShown() then
+                    UpdateRowTooltip(hoveredRow)
+                end
             end
         end)
     end)
