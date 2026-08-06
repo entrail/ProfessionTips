@@ -102,6 +102,20 @@ test("display list: section headers carry counts, rows follow their header", fun
     assertTrue(headerCount >= 2, "expected Available now + Coming up headers")
 end)
 
+test("scale notation: first segment is always a from-to range", function()
+    local ctx = T.boot("Vanilla")
+    local FormatScale = ctx.ns.ProfessionTips.FormatScale
+    -- normal recipe (Smelt Copper): orange range, then upper bounds
+    local copper = FormatScale(1, 25, 47, 70)
+    assertTrue(copper:find("1-24", 1, true) ~= nil, "orange range missing: " .. copper)
+    assertTrue(copper:find("46", 1, true) ~= nil, "yellow bound missing: " .. copper)
+    assertTrue(copper:find("69", 1, true) ~= nil, "green bound missing: " .. copper)
+    -- never-orange recipe (Smelt Bronze): yellow span becomes the range
+    local bronze = FormatScale(65, 65, 90, 115)
+    assertTrue(bronze:find("65-89", 1, true) ~= nil, "yellow range missing: " .. bronze)
+    assertTrue(bronze:find("114", 1, true) ~= nil, "green bound missing: " .. bronze)
+end)
+
 test("product mapping: crafted items known for item-producing recipes", function()
     local ctx = T.boot("Vanilla")
     local ns = ctx.ns

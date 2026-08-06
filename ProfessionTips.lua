@@ -140,16 +140,19 @@ end
 -- green upper bounds. Matters when buying mats: yellow needs ~1-4 per
 -- point, green far more.
 local function FormatScale(orange, yellow, green, gray)
-    -- Recipes that are never orange (orange >= yellow, e.g. TBC flasks)
-    -- start the scale with a single yellow number instead of a range.
-    local first
+    -- Notation: FIRST segment as a from-to range, then upper bounds.
+    -- Recipes that are never orange (orange >= yellow: Smelt Bronze,
+    -- TBC flasks, ...) start YELLOW, so the yellow span becomes the
+    -- range - "65-89 114" instead of the confusing "65 89 114"
+    -- (user feedback 2026-08-06).
     if yellow > orange then
-        first = ("|c%s%d-%d|r"):format(DIFFICULTY_COLOR.orange, orange, yellow - 1)
-    else
-        first = ("|c%s%d|r"):format(DIFFICULTY_COLOR.yellow, orange)
+        return ("|c%s%d-%d|r |c%s%d|r |c%s%d|r"):format(
+            DIFFICULTY_COLOR.orange, orange, yellow - 1,
+            DIFFICULTY_COLOR.yellow, green - 1,
+            DIFFICULTY_COLOR.green, gray - 1)
     end
-    return ("%s |c%s%d|r |c%s%d|r"):format(first,
-        DIFFICULTY_COLOR.yellow, green - 1,
+    return ("|c%s%d-%d|r |c%s%d|r"):format(
+        DIFFICULTY_COLOR.yellow, orange, green - 1,
         DIFFICULTY_COLOR.green, gray - 1)
 end
 
