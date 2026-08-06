@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.4.0 (unreleased)
+
+- New: **recipe browser** — a side tab on the profession windows
+  (including the Enchanting window) listing every recipe of the open
+  profession: available now, coming up and already known, sorted by
+  required skill and colored by difficulty.
+- Every recipe shows **where to get it** — trainer / vendor / drop /
+  quest / world drop — with costs, vendor/mob names and zones. Complete
+  acquisition data for all 1,230 Era and 2,119 TBC recipes; a handful of
+  genuinely unobtainable recipes are marked "source unknown".
+- Rich hover tooltip (requirement + skill-up scale, all sources with
+  prices, reagents); hold Shift for the crafted item's own tooltip.
+- Wide profession windows (e.g. Leatrix Plus) get a two-pane layout:
+  recipe list left, full details for the selected recipe right.
+- Recipes display the crafted item's icon, search box and a "Known"
+  filter included; fully localized (deDE, frFR, esES, ptBR).
+
 ## v1.3.3 (2026-07-24)
 
 - Re-release of 1.3.2 (the 1.3.2 package never got built). No in-game
