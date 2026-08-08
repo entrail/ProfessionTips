@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.4.0 (unreleased)
+## v1.4.0 (2026-08-08)
 
 - New: **recipe browser** — a side tab on the profession windows
   (including the Enchanting window) listing every recipe of the open
@@ -14,8 +14,24 @@
   prices, reagents); hold Shift for the crafted item's own tooltip.
 - Wide profession windows (e.g. Leatrix Plus) get a two-pane layout:
   recipe list left, full details for the selected recipe right.
-- Recipes display the crafted item's icon, search box and a "Known"
-  filter included; fully localized (deDE, frFR, esES, ptBR).
+- Recipes display the crafted item's icon; hovering the icon shows the
+  crafted item's own tooltip.
+- Filter bar: one toggle per source kind (Trainer / Vendor / Drop /
+  World drop / Quest), a faction filter and the "Known" toggle, plus a
+  search box. The filter bar wraps to fit narrow windows and your
+  settings are remembered account-wide.
+- Faction-locked recipes are marked with their faction crest and say
+  whether the other faction can still buy the teaching item on the
+  neutral auction house or cannot get the recipe at all. The faction
+  filter is a checkbox dropdown (Alliance / Horde / none) and defaults
+  to your own faction.
+- Right-click hides a recipe into a collapsible "Dismissed" section at
+  the end of the list; right-click it there to bring it back.
+- Skill-up scales read correctly for recipes that start yellow
+  ("65-89 114") and for smelts that never turn trivial ("250+"), which
+  also fixes the "no skillups" line those ores wrongly showed in the
+  reagent tooltips.
+- Fully localized (deDE, frFR, esES, ptBR).
 
 ## v1.3.3 (2026-07-24)
 
