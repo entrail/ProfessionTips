@@ -15,6 +15,7 @@ local COMMON_HEAD = {
     "Locales/frFR.lua",
     "Locales/esES.lua",
     "Locales/ptBR.lua",
+    "Locales/ruRU.lua",
 }
 local COMMON_TAIL = {
     "Data/ProductData.lua",
@@ -89,6 +90,7 @@ local SUITE_FILES = {
     "test_tooltip.lua",
     "test_sources.lua",
     "test_browser.lua",
+    "test_locales.lua",
 }
 for _, s in ipairs(SUITE_FILES) do
     currentSuite = s

@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.0 (2026-08-16)
+
+- New: **Russian (ruRU)** translation. Every piece of the addon's own
+  text is localized — reagent tooltips, the recipe browser (filter bar,
+  section headers, source labels and hover tooltips) and the settings
+  page — using the official in-game Russian profession terminology.
+- Internal: the test suite now checks every locale file for leftover
+  English and for format placeholders that no longer match their
+  English original.
+
 ## v1.4.0 (2026-08-08)
 
 - New: **recipe browser** — a side tab on the profession windows
