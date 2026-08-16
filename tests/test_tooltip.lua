@@ -65,6 +65,35 @@ test("tooltip: conversion chain adds 'via' lines, toggleable", function()
     assertTrue(B.m.TooltipText():find("via Item2996") == nil, "conversions disabled")
 end)
 
+test("tooltip: branching conversions - stone feeds two professions", function()
+    -- Rough Stone 2835 -> Rough Grinding Stone 3470 (blacksmithing)
+    --                  -> Rough Blasting Powder 4357 (engineering)
+    local B = T.boot("Vanilla", function(m)
+        m.state.skillLines = {
+            { name = "Spell2018", rank = 1 }, -- Blacksmithing
+            { name = "Spell4036", rank = 1 }, -- Engineering
+        }
+    end)
+    B.ns.db.maxLines = 50
+    B.m.HoverItem(2835)
+    local text = B.m.TooltipText()
+    assertTrue(text:find("via Item3470") ~= nil, "grinding stone branch: " .. text)
+    assertTrue(text:find("via Item4357") ~= nil, "blasting powder branch: " .. text)
+end)
+
+test("tooltip: Solid/Dense Stone reach their grinding stone recipes", function()
+    local B = T.boot("Vanilla", function(m)
+        m.state.skillLines = { { name = "Spell2018", rank = 200 } } -- Blacksmithing
+    end)
+    B.ns.db.maxLines = 50
+    B.m.HoverItem(7912) -- Solid Stone -> Solid Grinding Stone 7966
+    assertTrue(B.m.TooltipText():find("via Item7966") ~= nil,
+        "solid: " .. B.m.TooltipText())
+    B.m.HoverItem(12365) -- Dense Stone -> Dense Grinding Stone 12644
+    assertTrue(B.m.TooltipText():find("via Item12644") ~= nil,
+        "dense: " .. B.m.TooltipText())
+end)
+
 test("tooltip: maxLines truncates and counts the hidden recipes", function()
     local B = T.boot("Vanilla", function(m)
         m.state.skillLines = { { name = "Spell3908", rank = 1 } }

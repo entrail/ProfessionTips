@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.6.0 (2026-08-16)
+
+- New: reagent tooltips follow **branching** processing chains — one
+  material can feed several professions' intermediates. Stones now show
+  the Engineering recipes reachable via their **Blasting Powder** in
+  addition to the Blacksmithing ones via their Grinding Stone; in TBC,
+  Motes of Fire/Earth also lead to Elemental Blasting Powder recipes.
+- Fixed: **Solid Stone** showed no processed-material recipes at all
+  (wrong item id in the conversion table), and a stray dead entry from
+  the same mix-up was removed. Dense Stone had only worked by accident.
+
 ## v1.5.0 (2026-08-16)
 
 - New: **Russian (ruRU)** translation. Every piece of the addon's own

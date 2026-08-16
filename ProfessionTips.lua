@@ -70,6 +70,9 @@ module.PROFESSIONS = PROFESSIONS
 
 -- Raw material -> what it is processed into (the actual recipe reagent).
 -- Chains are followed transitively (Iron Ore -> Iron Bar -> Steel Bar).
+-- A value may be a LIST when the same material feeds several professions'
+-- intermediates (stone -> grinding stone for blacksmithing AND blasting
+-- powder for engineering).
 local CONVERSIONS = {
     -- cloth -> bolt
     [2589]  = 2996,  -- Linen Cloth -> Bolt of Linen Cloth
@@ -89,12 +92,12 @@ local CONVERSIONS = {
     [10620] = 12359, -- Thorium Ore -> Thorium Bar
     [11370] = 11371, -- Dark Iron Ore -> Dark Iron Bar
     [18562] = 17771, -- Elementium Ore -> Elementium Bar
-    -- stone -> grinding stone (blacksmithing reagent)
-    [2835]  = 3470,  -- Rough Stone -> Rough Grinding Stone
-    [2836]  = 3478,  -- Coarse Stone -> Coarse Grinding Stone
-    [2838]  = 3486,  -- Heavy Stone -> Heavy Grinding Stone
-    [12365] = 12644, -- Solid Stone -> Solid Grinding Stone
-    [12799] = 12849, -- Dense Stone -> Dense Grinding Stone
+    -- stone -> grinding stone (blacksmithing) / blasting powder (engineering)
+    [2835]  = { 3470, 4357 },   -- Rough Stone -> Rough Grinding Stone / Rough Blasting Powder
+    [2836]  = { 3478, 4364 },   -- Coarse Stone -> Coarse Grinding Stone / Coarse Blasting Powder
+    [2838]  = { 3486, 4377 },   -- Heavy Stone -> Heavy Grinding Stone / Heavy Blasting Powder
+    [7912]  = { 7966, 10505 },  -- Solid Stone -> Solid Grinding Stone / Solid Blasting Powder
+    [12365] = { 12644, 15992 }, -- Dense Stone -> Dense Grinding Stone / Dense Blasting Powder
     -- leatherworking intermediates
     [2934]  = 2318,  -- Ruined Leather Scraps -> Light Leather
     [783]   = 4231,  -- Light Hide -> Cured Light Hide
@@ -113,8 +116,8 @@ local CONVERSIONS = {
     [25649] = 21887, -- Knothide Leather Scraps -> Knothide Leather
     -- motes -> primals (10:1, the primal is the common reagent)
     [22572] = 22451, -- Mote of Air -> Primal Air
-    [22573] = 22452, -- Mote of Earth -> Primal Earth
-    [22574] = 21884, -- Mote of Fire -> Primal Fire
+    [22573] = { 22452, 23781 }, -- Mote of Earth -> Primal Earth / Elemental Blasting Powder
+    [22574] = { 21884, 23781 }, -- Mote of Fire -> Primal Fire / Elemental Blasting Powder
     [22575] = 21886, -- Mote of Life -> Primal Life
     [22576] = 22457, -- Mote of Mana -> Primal Mana
     [22577] = 22456, -- Mote of Shadow -> Primal Shadow
@@ -234,8 +237,15 @@ local function GatherCandidates(prof, itemId, skill)
     local anyRecipe, anyAvailable = false, false
     local lockedTo -- faction of excluded recipes (always the opposite one)
     local range
-    local id, via = itemId, nil
-    for _ = 1, 5 do -- conversion chains are short; hard depth cap
+    -- Breadth-first over the conversion graph: CONVERSIONS entries may
+    -- branch (stone -> grinding stone AND blasting powder), so each queue
+    -- entry is {itemId, depth}. Chains are short; hard depth cap.
+    local queue, visited = { { itemId, 0 } }, { [itemId] = true }
+    local qi = 1
+    while queue[qi] do
+        local id, depth = queue[qi][1], queue[qi][2]
+        qi = qi + 1
+        local via = id ~= itemId and id or nil
         local spells = index[id]
         if spells then
             for _, spellId in ipairs(spells) do
@@ -264,10 +274,18 @@ local function GatherCandidates(prof, itemId, skill)
                 end
             end
         end
-        if not ns.db.includeProcessed then break end
-        id = CONVERSIONS[id]
-        if not id then break end
-        via = id
+        if ns.db.includeProcessed and depth < 4 then
+            local nxt = CONVERSIONS[id]
+            if type(nxt) == "number" then nxt = { nxt } end
+            if nxt then
+                for _, n in ipairs(nxt) do
+                    if not visited[n] then
+                        visited[n] = true
+                        queue[#queue + 1] = { n, depth + 1 }
+                    end
+                end
+            end
+        end
     end
 
     table.sort(out, function(a, b)
