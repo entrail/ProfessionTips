@@ -1,6 +1,41 @@
 local ADDON_NAME, ns = ...
 
-ns.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
+-- Client API differences live here so feature modules do not need to know
+-- which game flavor is running. Wrath uses the global addon/tooltip/spell
+-- APIs; current Classic clients expose namespaced or callback-based variants.
+ns.Compat = {}
+local Compat = ns.Compat
+
+function Compat.GetAddOnMetadata(addonName, field)
+    if C_AddOns and C_AddOns.GetAddOnMetadata then
+        return C_AddOns.GetAddOnMetadata(addonName, field)
+    end
+    return GetAddOnMetadata(addonName, field)
+end
+
+function Compat.IsPlayerSpell(spellId)
+    if IsPlayerSpell then return IsPlayerSpell(spellId) end
+    if IsSpellKnown then return IsSpellKnown(spellId) end
+    return false
+end
+
+function Compat.RegisterItemTooltipCallback(callback)
+    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
+        and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item then
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, callback)
+    end
+
+    -- Required by Wrath and retained as a fallback for Classic clients that
+    -- still dispatch item tooltips through the legacy script.
+    if GameTooltip then
+        pcall(GameTooltip.HookScript, GameTooltip, "OnTooltipSetItem", callback)
+    end
+    if ItemRefTooltip then
+        pcall(ItemRefTooltip.HookScript, ItemRefTooltip, "OnTooltipSetItem", callback)
+    end
+end
+
+ns.version = Compat.GetAddOnMetadata(ADDON_NAME, "Version")
 
 -- Localization: all user-facing text goes through ns.L["English text"].
 -- English is the key and the fallback; locale files can override entries.
