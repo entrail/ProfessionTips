@@ -50,17 +50,20 @@ ns.ProfessionTips = module
 -- professions whose data file is not loaded on this game flavor (e.g.
 -- Jewelcrafting on Vanilla) stay inert automatically. Exposed on the module
 -- so Options.lua can generate one checkbox per available profession.
+-- skillLine: SkillLine id, read directly where the client has
+-- C_SkillInfo.GetSkillLineInfoByID instead of the classic skill list
+-- (WoW Forever).
 local PROFESSIONS = {
-    { dbKey = "alchemy",        skillSpell = 2259,  prefix = "ALCHEMY" },
-    { dbKey = "blacksmithing",  skillSpell = 2018,  prefix = "BLACKSMITHING" },
-    { dbKey = "cooking",        skillSpell = 2550,  prefix = "COOKING" },
-    { dbKey = "enchanting",     skillSpell = 7411,  prefix = "ENCHANTING" },
-    { dbKey = "engineering",    skillSpell = 4036,  prefix = "ENGINEERING" },
-    { dbKey = "firstAid",       skillSpell = 3273,  prefix = "FIRSTAID" },
-    { dbKey = "jewelcrafting",  skillSpell = 25229, prefix = "JEWELCRAFTING" }, -- TBC
-    { dbKey = "leatherworking", skillSpell = 2108,  prefix = "LEATHERWORKING" },
-    { dbKey = "mining",         skillSpell = 2575,  prefix = "SMELTING" },
-    { dbKey = "tailoring",      skillSpell = 3908,  prefix = "TAILORING" },
+    { dbKey = "alchemy",        skillSpell = 2259,  skillLine = 171, prefix = "ALCHEMY" },
+    { dbKey = "blacksmithing",  skillSpell = 2018,  skillLine = 164, prefix = "BLACKSMITHING" },
+    { dbKey = "cooking",        skillSpell = 2550,  skillLine = 185, prefix = "COOKING" },
+    { dbKey = "enchanting",     skillSpell = 7411,  skillLine = 333, prefix = "ENCHANTING" },
+    { dbKey = "engineering",    skillSpell = 4036,  skillLine = 202, prefix = "ENGINEERING" },
+    { dbKey = "firstAid",       skillSpell = 3273,  skillLine = 129, prefix = "FIRSTAID" },
+    { dbKey = "jewelcrafting",  skillSpell = 25229, skillLine = 755, prefix = "JEWELCRAFTING" }, -- TBC
+    { dbKey = "leatherworking", skillSpell = 2108,  skillLine = 165, prefix = "LEATHERWORKING" },
+    { dbKey = "mining",         skillSpell = 2575,  skillLine = 186, prefix = "SMELTING" },
+    { dbKey = "tailoring",      skillSpell = 3908,  skillLine = 197, prefix = "TAILORING" },
 }
 for _, prof in ipairs(PROFESSIONS) do
     prof.recipes = prof.prefix .. "_RECIPES"
@@ -83,6 +86,10 @@ local CONVERSIONS = {
     -- ore -> bar (-> steel)
     [2770]  = 2840,  -- Copper Ore -> Copper Bar
     [2771]  = 3576,  -- Tin Ore -> Tin Bar
+    -- Bronze = Copper Bar + Tin Bar, so both bars chain on to Bronze Bar
+    -- (Tin Bar's ONLY own recipe is Smelt Bronze)
+    [2840]  = 2841,  -- Copper Bar -> Bronze Bar
+    [3576]  = 2841,  -- Tin Bar -> Bronze Bar
     [2775]  = 2842,  -- Silver Ore -> Silver Bar
     [2772]  = 3575,  -- Iron Ore -> Iron Bar
     [3575]  = 3859,  -- Iron Bar -> Steel Bar
@@ -182,35 +189,12 @@ module.FormatScale = FormatScale
 module.DIFFICULTY_COLOR = DIFFICULTY_COLOR
 module.NEVER_TRIVIAL = NEVER_TRIVIAL
 
+-- Classic skill line API (Era 1.15, TBC 2.5): localized-vs-localized
+-- name match, see header comment; Forever reads the skill line by id.
+-- nil = the character doesn't have this profession.
 local function GetSkill(prof)
-    prof.name = prof.name or GetSpellInfo(prof.skillSpell)
-    -- Classic skill line API (Era 1.15, TBC 2.5): localized-vs-localized
-    -- name match, see header comment.
-    if GetNumSkillLines and GetSkillLineInfo then
-        for i = 1, GetNumSkillLines() do
-            local name, isHeader, _, rank = GetSkillLineInfo(i)
-            if not isHeader and name == prof.name then
-                return rank
-            end
-        end
-        return nil -- character doesn't have this profession
-    end
-    -- Modern fallback (clients without the skill line API):
-    -- GetProfessions returns prof1, prof2, archaeology, fishing, cooking,
-    -- first aid indexes for GetProfessionInfo.
-    if GetProfessions and GetProfessionInfo then
-        local ids = { GetProfessions() }
-        for i = 1, 6 do
-            local id = ids[i]
-            if id then
-                local name, _, rank = GetProfessionInfo(id)
-                if name == prof.name then
-                    return rank
-                end
-            end
-        end
-    end
-    return nil
+    prof.name = prof.name or ns.api.GetSpellName(prof.skillSpell)
+    return ns.api.GetProfessionRank(prof.skillLine, prof.name)
 end
 
 local playerFaction
@@ -295,16 +279,16 @@ local function GatherCandidates(prof, itemId, skill)
 end
 
 local function AddRecipeLine(tooltip, skill, cand, recipe, hasProfession)
-    local name = GetSpellInfo(cand.spellId) or ("#" .. cand.spellId)
+    local name = ns.api.GetSpellName(cand.spellId) or ("#" .. cand.spellId)
     local color = DIFFICULTY_COLOR[DifficultyAt(skill, recipe)]
 
     local left = ("  |c%s%s|r"):format(color, name)
     if cand.via then
-        local viaName = GetItemInfo(cand.via) or L["processed material"]
+        local viaName = ns.api.GetItemName(cand.via) or L["processed material"]
         left = left .. (" |cff9d9d9d(%s)|r"):format(format(L["via %s"], viaName))
     end
     -- Without the profession every recipe is unlearned - skip the noise.
-    if hasProfession and not IsPlayerSpell(cand.spellId) then
+    if hasProfession and not ns.api.IsSpellKnown(cand.spellId) then
         left = left .. (" |cffff5050(%s)|r"):format(L["not learned"])
     end
 
@@ -393,7 +377,7 @@ local function AddProfessionLines(tooltip, prof, itemId)
         if hasProfession and ns.db[prof.dbKey .. "OnlyLearned"] then
             pool = {}
             for _, cand in ipairs(candidates) do
-                if IsPlayerSpell(cand.spellId) then pool[#pool + 1] = cand end
+                if ns.api.IsSpellKnown(cand.spellId) then pool[#pool + 1] = cand end
             end
         end
 
@@ -421,8 +405,8 @@ local function AddProfessionLines(tooltip, prof, itemId)
                 if ua ~= ub then return ua end
                 if ua then
                     if hasProfession then
-                        local la = IsPlayerSpell(a.spellId)
-                        local lb = IsPlayerSpell(b.spellId)
+                        local la = ns.api.IsSpellKnown(a.spellId)
+                        local lb = ns.api.IsSpellKnown(b.spellId)
                         if la ~= lb then return la end
                     end
                     return ra.orange > rb.orange

@@ -344,3 +344,29 @@ test("source lines: trainer cost, vendor details, quest zone", function()
     local world = ns.BrowserSourceLine({ k = "w", item = 4345 })
     assertTrue(world:find("World drop", 1, true) ~= nil, "no world drop word: " .. world)
 end)
+
+test("classic trade skill window: side tab toggles the browser", function()
+    local ctx = T.boot("Vanilla", function(m)
+        m.GetTradeSkillLine = function() return "Spell3908", 75, 150 end -- Tailoring
+    end)
+    local m = ctx.m
+    local host = m.CreateFrame(nil, "TradeSkillFrame")
+    m.Fire("TRADE_SKILL_SHOW")
+    local tab
+    for _, f in ipairs(m.__frames) do
+        if f:GetParent() == host and f.__scripts.OnClick then tab = f end
+    end
+    assertTrue(tab ~= nil, "tab created on TradeSkillFrame")
+    assertTrue(tab:IsShown(), "tab shown for Tailoring")
+    -- a CheckButton flips its own state before OnClick, like in game
+    tab:SetChecked(not tab:GetChecked())
+    tab.__scripts.OnClick(tab)
+    local overlay = ctx.env.ProfessionTipsBrowser
+    assertTrue(overlay and overlay:IsShown(), "browser open: " .. table.concat(m.__prints, " | "))
+    assertTrue(tab:GetChecked(), "tab checked")
+    assertEqual(overlay:GetParent(), host, "docked into TradeSkillFrame")
+    tab:SetChecked(not tab:GetChecked())
+    tab.__scripts.OnClick(tab)
+    assertFalse(overlay:IsShown(), "second click closes")
+    assertFalse(tab:GetChecked(), "tab unchecked")
+end)

@@ -81,6 +81,21 @@ test("tooltip: branching conversions - stone feeds two professions", function()
     assertTrue(text:find("via Item4357") ~= nil, "blasting powder branch: " .. text)
 end)
 
+test("tooltip: Tin Ore reaches the Bronze Bar recipes via Tin Bar", function()
+    -- Tin Bar 3576 only feeds Smelt Bronze; the smiths' bronze recipes
+    -- (Bronze Bar 2841) must still show on Tin Ore 2771 and Tin Bar
+    local B = T.boot("Vanilla", function(m)
+        m.state.skillLines = { { name = "Spell2018", rank = 100 } } -- Blacksmithing
+    end)
+    B.ns.db.maxLines = 50
+    B.m.HoverItem(2771)
+    assertTrue(B.m.TooltipText():find("via Item2841") ~= nil, "ore: " .. B.m.TooltipText())
+    B.m.HoverItem(3576)
+    assertTrue(B.m.TooltipText():find("via Item2841") ~= nil, "bar: " .. B.m.TooltipText())
+    B.m.HoverItem(2770) -- Copper Ore is the other half of bronze
+    assertTrue(B.m.TooltipText():find("via Item2841") ~= nil, "copper: " .. B.m.TooltipText())
+end)
+
 test("tooltip: Solid/Dense Stone reach their grinding stone recipes", function()
     local B = T.boot("Vanilla", function(m)
         m.state.skillLines = { { name = "Spell2018", rank = 200 } } -- Blacksmithing

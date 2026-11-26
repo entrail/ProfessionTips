@@ -130,7 +130,10 @@ local function QueryNpcName(npcId)
 end
 
 function ns.GetNpcName(npcId, fallback)
-    if not wantNpcNames or not ns.db or not npcId then return fallback end
+    -- no shipped name (Forever vendors new since Era): ask the server on
+    -- every locale, English included
+    if not ns.db or not npcId then return fallback end
+    if not wantNpcNames and fallback then return fallback end
     local cache = ns.db.npcNames
     if not cache or cache.locale ~= GetLocale() then
         cache = { locale = GetLocale() }

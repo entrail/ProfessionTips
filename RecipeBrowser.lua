@@ -16,12 +16,17 @@ local L = ns.L
 -- selected recipe; on the default 384px frame the list fills the overlay
 -- and details live in the hover tooltip (which exists in both modes).
 --
+-- WoW Forever has no trade skill / craft window: there the tab joins the
+-- profession-tab column of Retail's ProfessionsFrame and the overlay
+-- covers its crafting page (see the "hosts" section at the end).
+--
 -- Locale safety: recipes are spell IDs, names resolved at runtime
--- (GetSpellInfo); vendor/mob names localized via ns.GetNpcName (server
--- query, English data fallback); zone names are shipped English (display
--- only). The open profession is identified by localized-vs-localized
--- name match (profession spell name == GetTradeSkillLine/CraftDisplay
--- name), the same pattern ProfessionTips.lua uses.
+-- (ns.api.GetSpellName); vendor/mob names localized via ns.GetNpcName
+-- (server query, English data fallback); zones localized from their area
+-- id where the data has one (Forever), else shipped English. The open
+-- profession is identified by localized-vs-localized name match on the
+-- classic windows (profession spell name == GetTradeSkillLine/
+-- CraftDisplay name), by skill line id on Forever.
 
 local ROW_HEIGHT = 21
 local WIDE_THRESHOLD = 500 -- default frame is 384 wide; wide skins ~714
@@ -122,7 +127,7 @@ function ns.BuildBrowserModel(prof, skill)
             req = recipe.orange,
             recipe = recipe,
             sources = srcList,
-            learned = IsPlayerSpell(spellId),
+            learned = ns.api.IsSpellKnown(spellId),
             faction = EntryFaction(spellId, srcList),
         }
         entry.crossAH = entry.faction ~= nil and CrossFactionItem(srcList)
@@ -209,30 +214,70 @@ end
 ns.BrowserFactionLabel = FactionLabel -- exposed for tests
 
 
+-- Forever's recipe vendors take "Merchant's Favor", a currency earned by
+-- trading with merchants (What's Training data: favor = amount).
+local MERCHANTS_FAVOR = 3402
+local function FavorText(amount)
+    local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo
+        and C_CurrencyInfo.GetCurrencyInfo(MERCHANTS_FAVOR)
+    local icon = info and info.iconFileID and ("|T" .. info.iconFileID .. ":0|t ") or ""
+    local text = ("%d %s%s"):format(amount, icon, info and info.name or L["Merchant's Favor"])
+    if info and info.quantity and info.quantity < amount then
+        text = "|cffff2020" .. text .. "|r"
+    end
+    return text
+end
+
+-- "Requires Friendly with <faction>" - alternatives (a Horde and an
+-- Alliance faction of the same vendor pair) joined with " / ".
+local function RepText(rep)
+    local names, standing = {}, nil
+    for _, pair in ipairs(rep) do
+        local name = ns.api.GetFactionName(pair[1])
+        if name then names[#names + 1] = name end
+        standing = standing or pair[2]
+    end
+    if #names == 0 then return nil end
+    local label = _G["FACTION_STANDING_LABEL" .. (standing or 4)] or ""
+    return (ITEM_REQ_REPUTATION or "Requires %s - %s"):format(table.concat(names, " / "), label)
+end
+
 -- One rendered line per source entry (full text - tooltip + detail pane).
--- Money is colored by affordability, npc names localized on demand.
+-- Money is colored by affordability, npc names localized on demand, zones
+-- localized from their area id when the data carries one (Forever).
 local function SourceLine(src)
     local kind = SOURCE_ORDER[src.k] and src.k or "u"
     local head = "|c" .. SOURCE_COLOR[kind] .. SourceWord(kind) .. "|r"
     local bits = {}
+    local zone = ns.api.GetAreaName(src.area) or src.zone
     -- "t" normally has no npc, but special NPC-teachers (e.g. the BWL
     -- Elementium smelt) ship one - show them like a vendor/dropper
-    if src.name and (kind == "t" or kind == "v" or kind == "d") then
-        local name = ns.GetNpcName(src.npc, src.name)
-        bits[#bits + 1] = name .. (src.zone and (" (" .. src.zone .. ")") or "")
-    elseif src.name and kind == "q" then
-        bits[#bits + 1] = src.name .. (src.zone and (" (" .. src.zone .. ")") or "")
-    elseif src.zone then
-        bits[#bits + 1] = src.zone
+    local who
+    if src.npc and (kind == "t" or kind == "v" or kind == "d") then
+        who = ns.GetNpcName(src.npc, src.name)
+    elseif kind == "q" and (src.quest or src.name) then
+        who = (src.quest and ns.api.GetQuestTitle(src.quest)) or src.name
+            or ("#" .. src.quest)
     end
+    if who then
+        bits[#bits + 1] = who .. (zone and (" (" .. zone .. ")") or "")
+    elseif zone then
+        bits[#bits + 1] = zone
+    end
+    if src.auto then bits[#bits + 1] = L["learned with the profession"] end
     if src.cost then
-        local money = GetCoinTextureString(src.cost)
+        local money = ns.api.CoinString(src.cost)
         if GetMoney and GetMoney() < src.cost then
             money = "|cffff2020" .. money .. "|r"
         end
         bits[#bits + 1] = money
     end
+    if src.favor then bits[#bits + 1] = FavorText(src.favor) end
     if src.limited then bits[#bits + 1] = L["limited stock"] end
+    if src.rep then
+        local text = RepText(src.rep)
+        if text then bits[#bits + 1] = text end
+    end
     if src.faction then bits[#bits + 1] = FactionLabel(src.faction) end
     if #bits == 0 then return head end
     return head .. ": " .. table.concat(bits, " - ")
@@ -243,7 +288,7 @@ ns.BrowserSourceLine = SourceLine -- exposed for tests
 local module = {}
 ns.RecipeBrowser = module
 
-local hosts = {} -- host frame -> { tab, getLine } (TradeSkillFrame / CraftFrame)
+local hosts = {} -- host frame -> host record, see the "hosts" section below
 local overlay, listFrame, scrollFrame, scrollContent, detailFrame
 local searchBox, filterBar
 local filterButtons = {}
@@ -266,7 +311,7 @@ end
 local function MatchProfession(name)
     if not name then return nil end
     for _, prof in ipairs(Professions()) do
-        if ns[prof.recipes] and GetSpellInfo(prof.skillSpell) == name then
+        if ns[prof.recipes] and ns.api.GetSpellName(prof.skillSpell) == name then
             return prof
         end
     end
@@ -288,7 +333,7 @@ end
 -- ---------------------------------------------------------------- rows
 
 local function RecipeName(spellId)
-    return GetSpellInfo(spellId) or ("spell " .. spellId)
+    return ns.api.GetSpellName(spellId) or ("spell " .. spellId)
 end
 
 -- Spell icons: for spells the character has not learned, the client may
@@ -306,13 +351,10 @@ local function RecipeIcon(spellId)
     -- no server round trip.
     local product = ns.CRAFT_PRODUCT and ns.CRAFT_PRODUCT[spellId]
     if product then
-        local icon = GetItemIcon and GetItemIcon(product)
-        if not icon and GetItemInfoInstant then
-            icon = select(5, GetItemInfoInstant(product))
-        end
+        local icon = ns.api.GetItemIcon(product)
         if icon then return icon end
     end
-    local tex = GetSpellTexture(spellId)
+    local tex = ns.api.GetSpellIcon(spellId)
     local placeholder = not tex or tex == TEMP_ICON_FILE_ID
         or (type(tex) == "string" and tex:lower():find("temp", 1, true) ~= nil)
     if placeholder then
@@ -335,7 +377,7 @@ local function RequestItem(itemId)
     if C_Item and C_Item.RequestLoadItemDataByID then
         pcall(C_Item.RequestLoadItemDataByID, itemId)
     else
-        GetItemInfo(itemId) -- the query itself triggers the server request
+        ns.api.GetItemName(itemId) -- the query itself triggers the server request
     end
 end
 
@@ -427,7 +469,7 @@ local function BuildInfoLines(entry)
     for _, r in ipairs(reagents) do
         -- nil until the item cache answers; GET_ITEM_INFO_RECEIVED
         -- re-renders the tooltip/pane once the name arrives
-        local name = GetItemInfo(r.id)
+        local name = ns.api.GetItemName(r.id)
         if not name then RequestItem(r.id) end
         lines[#lines + 1] = ("%s x%d"):format(name or "|cff909090...|r", r.count)
     end
@@ -503,8 +545,8 @@ local function OnRowClick(self, button)
         RefreshBrowserList()
         return
     end
-    if IsModifiedClick and IsModifiedClick("CHATLINK") and GetSpellLink then
-        local link = GetSpellLink(entry.spell)
+    if IsModifiedClick and IsModifiedClick("CHATLINK") then
+        local link = ns.api.GetSpellLink(entry.spell)
         if link then ChatEdit_InsertLink(link) end
         return
     end
@@ -789,7 +831,7 @@ local function EnsureDetail()
     w.hover:SetScript("OnLeave", function() GameTooltip:Hide() end)
     w.hover:SetScript("OnClick", function(self)
         if self.product and IsModifiedClick and IsModifiedClick("CHATLINK") then
-            local link = select(2, GetItemInfo(self.product))
+            local link = ns.api.GetItemLink(self.product)
             if link then ChatEdit_InsertLink(link) end
         end
     end)
@@ -851,17 +893,13 @@ local function LayoutFilterBar(width)
 end
 
 local function ApplyLayout()
-    if not overlay or not activeHost then return end
-    local wide = activeHost:GetWidth() >= WIDE_THRESHOLD
-    -- the default frame's content area ends above the bottom button row
-    -- (+80 verified in game); widened frames (Leatrix) grow the list well
-    -- below that line, so cover everything down to the border - the
-    -- craft buttons are useless while browsing anyway (live finding
-    -- 2026-08-05: a strip of the real list stayed visible)
-    overlay:SetPoint("BOTTOMRIGHT", activeHost, "BOTTOMRIGHT", -38, wide and 48 or 80)
+    local info = overlay and activeHost and hosts[activeHost]
+    if not info then return end
+    local wide = info.isWide(activeHost)
+    if info.layout then info.layout(overlay, activeHost, wide) end
     local overlayWidth = overlay:GetWidth() or 0
     if overlayWidth == 0 then -- rect not resolved yet this frame
-        overlayWidth = (activeHost:GetWidth() or 384) - 60
+        overlayWidth = info.fallbackWidth(activeHost)
     end
     -- header block (6 top inset + 30 high) + the wrapped filter bar
     -- (2 gap) decide where the list starts
@@ -897,7 +935,6 @@ end
 local function EnsureOverlay()
     if overlay then return end
     overlay = CreateFrame("Frame", "ProfessionTipsBrowser", UIParent)
-    overlay:SetFrameStrata("HIGH")
     overlay:EnableMouse(true) -- block the widgets underneath
     overlay:EnableMouseWheel(true) -- swallow wheel outside our own scroll
     overlay:SetScript("OnMouseWheel", function() end)
@@ -909,12 +946,10 @@ local function EnsureOverlay()
     local underlay = overlay:CreateTexture(nil, "BACKGROUND", nil, -1)
     underlay:SetAllPoints()
     underlay:SetColorTexture(0, 0, 0, 1)
-    local bg = overlay:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetTexture("Interface\\FrameGeneral\\UI-Background-Marble", "REPEAT", "REPEAT")
-    bg:SetHorizTile(true)
-    bg:SetVertTile(true)
-    bg:SetVertexColor(0.5, 0.5, 0.5, 1) -- darken toward the WhatsTraining tone
+    -- the host paints it: dark marble on the classic windows, the
+    -- profession window's own background art on Forever
+    overlay.bg = overlay:CreateTexture(nil, "BACKGROUND")
+    overlay.bg:SetAllPoints()
 
     -- header: skill level + search + show-known toggle
     local header = CreateFrame("Frame", nil, overlay)
@@ -934,7 +969,7 @@ local function EnsureOverlay()
     searchBox:SetPoint("RIGHT", header, "RIGHT", -4, 0)
     searchBox:SetAutoFocus(false)
     searchBox:SetScript("OnTextChanged", function(self)
-        SearchBoxTemplate_OnTextChanged(self)
+        if SearchBoxTemplate_OnTextChanged then SearchBoxTemplate_OnTextChanged(self) end
         local text = strlower(strtrim(self:GetText() or ""))
         if text ~= searchFilter then
             searchFilter = text
@@ -1003,9 +1038,20 @@ local function EnsureOverlay()
     -- faction: dropdown with one checkbox per faction (recipes both
     -- factions can get are always listed)
     do
-        local dropdown = CreateFrame("Frame", "ProfessionTipsBrowserFactionMenu",
-            filterBar, "UIDropDownMenuTemplate")
-        dropdown:Hide()
+        -- menu API: the modern MenuUtil on Forever (the legacy dropdown is
+        -- deprecated on the Retail engine), the classic UIDropDownMenu
+        -- elsewhere, a plain cycle when neither exists
+        local useMenuUtil = MenuUtil and MenuUtil.CreateContextMenu
+            and (ns.isForever or not UIDropDownMenu_Initialize)
+        local dropdown
+        if not useMenuUtil and UIDropDownMenu_Initialize then
+            local ok, frame = pcall(CreateFrame, "Frame", "ProfessionTipsBrowserFactionMenu",
+                filterBar, "UIDropDownMenuTemplate")
+            if ok then
+                dropdown = frame
+                dropdown:Hide()
+            end
+        end
         local btn
         local function InitMenu(_, level)
             if not UIDropDownMenu_CreateInfo then return end
@@ -1022,14 +1068,25 @@ local function EnsureOverlay()
                 UIDropDownMenu_AddButton(info, level)
             end
         end
-        if UIDropDownMenu_Initialize then
+        if dropdown then
             UIDropDownMenu_Initialize(dropdown, InitMenu, "MENU")
         end
 
         btn = NewFilterButton(L["Faction"],
             L["Which faction-exclusive recipes to list. Recipes both factions can obtain are always shown."],
             function(self)
-                if UIDropDownMenu_Initialize and ToggleDropDownMenu then
+                if useMenuUtil then
+                    MenuUtil.CreateContextMenu(self, function(_, root)
+                        for _, faction in ipairs({ "Alliance", "Horde" }) do
+                            root:CreateCheckbox((FACTION_ICON[faction] or "") .. " " .. FactionName(faction),
+                                function() return ns.BrowserFactionShown(faction) end,
+                                function()
+                                    ns.BrowserToggleFaction(faction)
+                                    RefreshBrowserList()
+                                end)
+                        end
+                    end)
+                elseif dropdown and ToggleDropDownMenu then
                     ToggleDropDownMenu(1, nil, dropdown, self, 0, 0)
                 else -- no dropdown API: cycle mine -> both -> none
                     local a, h = ns.BrowserFactionShown("Alliance"), ns.BrowserFactionShown("Horde")
@@ -1087,6 +1144,9 @@ local function EnsureOverlay()
     overlay:RegisterEvent("GET_ITEM_INFO_RECEIVED")
     overlay:RegisterEvent("SPELL_DATA_LOAD_RESULT")
     overlay:RegisterEvent("MODIFIER_STATE_CHANGED")
+    -- quest titles of quest sources (Forever data names quests by id);
+    -- guarded: RegisterEvent throws on events a client does not know
+    pcall(overlay.RegisterEvent, overlay, "QUEST_DATA_LOAD_RESULT")
     overlay:SetScript("OnEvent", function(_, event)
         -- pressing/releasing Shift while hovering a row swaps between
         -- the recipe info and the crafted item's tooltip live
@@ -1117,14 +1177,7 @@ end
 local function AttachOverlay(host)
     EnsureOverlay()
     activeHost = host
-    overlay:SetParent(host)
-    overlay:ClearAllPoints()
-    -- covers the frame's content area in both the default skin and wide
-    -- skins: below the title/rank area, above the bottom button row,
-    -- inside the side borders
-    overlay:SetPoint("TOPLEFT", host, "TOPLEFT", 22, -70)
-    overlay:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -38, 80)
-    overlay:SetFrameLevel(host:GetFrameLevel() + 20)
+    hosts[host].attach(overlay, host)
 end
 
 -- The whole show/refresh path runs inside button/event handlers where the
@@ -1157,30 +1210,48 @@ function RefreshBrowserList()
     if detailFrame and detailFrame:IsShown() then RefreshDetail() end
 end
 
+local function SetOpen(info, open)
+    info.open = open
+    info.tab:SetChecked(open)
+end
+
 local function ShowBrowser(host)
     AttachOverlay(host)
     selectedSpell = nil
     overlay:Show()
+    SetOpen(hosts[host], true)
+    if hosts[host].onShow then hosts[host].onShow() end
     RefreshBrowser()
 end
 
 local function HideBrowser()
     if overlay then overlay:Hide() end
     local info = activeHost and hosts[activeHost]
-    if info and info.tab then info.tab:SetChecked(false) end
+    if info and info.tab then SetOpen(info, false) end
 end
 
--- ---------------------------------------------------------------- tabs
+-- ---------------------------------------------------------------- hosts
+--
+-- A host is a Blizzard profession window the browser docks into:
+--   tab            our side tab on that window
+--   resolve()      -> prof (PROFESSIONS entry), rank, maxRank of the
+--                  profession the window shows, or nil
+--   available()    extra visibility rule for the tab (optional)
+--   attach(o, h)   parent / anchor / paint the overlay over the window
+--   layout(o,h,w)  re-anchor on resize (optional), isWide(h), fallbackWidth(h)
+-- We only ever ANCHOR to Blizzard's frames, hook their scripts and read
+-- their state - never call into or write onto them (taint: the profession
+-- windows run protected craft actions).
 
 local function UpdateHost(host)
     local info = hosts[host]
     if not info then return end
-    local name, rank, maxRank = info.getLine()
-    local prof = MatchProfession(name)
-    if prof and ns.db.recipeBrowser then
+    local prof, rank, maxRank = info.resolve()
+    if prof and ns.db.recipeBrowser and (not info.available or info.available()) then
         activeProf, activeSkill, activeMax = prof, rank or 0, maxRank or 0
+        if info.position then info.position() end
         info.tab:Show()
-        if info.tab:GetChecked() then
+        if info.open then
             if not overlay or not overlay:IsShown() or activeHost ~= host then
                 Guarded(ShowBrowser, host)
             else
@@ -1196,7 +1267,37 @@ local function UpdateHost(host)
     end
 end
 
-local function CreateTab(host, getLine)
+local function ToggleHost(host)
+    local info = hosts[host]
+    if info.open then
+        HideBrowser()
+    else
+        SetOpen(info, true)
+        Guarded(UpdateHost, host)
+    end
+end
+
+-- ---- classic: TradeSkillFrame / CraftFrame (Era, TBC)
+
+local function PaintMarble(o)
+    -- fully OPAQUE, dark-textured background (the WhatsTraining/PetTips
+    -- look; user request 2026-08-05): black underlay for guaranteed
+    -- opacity + tiled dark marble on top. The tooltip background texture
+    -- tried first has translucency baked in - do not go back to it.
+    o.bg:SetTexture("Interface\\FrameGeneral\\UI-Background-Marble", "REPEAT", "REPEAT")
+    o.bg:SetHorizTile(true)
+    o.bg:SetVertTile(true)
+    o.bg:SetVertexColor(0.5, 0.5, 0.5, 1) -- darken toward the WhatsTraining tone
+end
+
+local function ClassicResolver(getLine)
+    return function()
+        local name, rank, maxRank = getLine()
+        return MatchProfession(name), rank, maxRank
+    end
+end
+
+local function CreateClassicTab(host, getLine)
     if hosts[host] then return end
     local tab = CreateFrame("CheckButton", nil, host, "SpellBookSkillLineTabTemplate")
     -- right edge of the window; the relative anchor follows wide skins
@@ -1207,13 +1308,37 @@ local function CreateTab(host, getLine)
     tab:Hide()
     tab:SetScript("OnClick", function(self)
         PlaySound(SOUNDKIT.IG_ABILITY_PAGE_TURN)
-        if self:GetChecked() then
-            Guarded(ShowBrowser, host)
-        else
-            HideBrowser()
-        end
+        -- the CheckButton flipped itself already; ToggleHost decides
+        self:SetChecked(hosts[host].open)
+        ToggleHost(host)
     end)
-    hosts[host] = { tab = tab, getLine = getLine }
+    hosts[host] = {
+        tab = tab,
+        resolve = ClassicResolver(getLine),
+        isWide = function(h) return h:GetWidth() >= WIDE_THRESHOLD end,
+        fallbackWidth = function(h) return (h:GetWidth() or 384) - 60 end,
+        attach = function(o, h)
+            PaintMarble(o)
+            o:SetParent(h)
+            o:SetFrameStrata("HIGH")
+            o:ClearAllPoints()
+            -- covers the frame's content area in both the default skin and
+            -- wide skins: below the title/rank area, above the bottom
+            -- button row, inside the side borders
+            o:SetPoint("TOPLEFT", h, "TOPLEFT", 22, -70)
+            o:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT", -38, 80)
+            o:SetFrameLevel(h:GetFrameLevel() + 20)
+        end,
+        layout = function(o, h, wide)
+            -- the default frame's content area ends above the bottom button
+            -- row (+80 verified in game); widened frames (Leatrix) grow the
+            -- list well below that line, so cover everything down to the
+            -- border - the craft buttons are useless while browsing anyway
+            -- (live finding 2026-08-05: a strip of the real list stayed
+            -- visible)
+            o:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT", -38, wide and 48 or 80)
+        end,
+    }
     host:HookScript("OnHide", function() HideBrowser() end)
     host:HookScript("OnSizeChanged", function()
         if overlay and overlay:IsShown() and activeHost == host then
@@ -1222,33 +1347,19 @@ local function CreateTab(host, getLine)
     end)
 end
 
--- ---------------------------------------------------------------- events
-
 local function TryHookTrade()
     if TradeSkillFrame and not hosts[TradeSkillFrame] then
-        CreateTab(TradeSkillFrame, TradeLine)
+        CreateClassicTab(TradeSkillFrame, TradeLine)
     end
 end
 
 local function TryHookCraft()
     if CraftFrame and not hosts[CraftFrame] then
-        CreateTab(CraftFrame, CraftLine)
+        CreateClassicTab(CraftFrame, CraftLine)
     end
 end
 
-ns.OnInit(function()
-    -- one-time migration of the old mine/all/neutral cycle setting to
-    -- the per-faction checkboxes (2026-08-06)
-    local old = ns.db.browserFaction
-    if old ~= nil then
-        if old == "all" then
-            ns.db.browserFactions = { Alliance = true, Horde = true }
-        elseif old == "neutral" then
-            ns.db.browserFactions = { Alliance = false, Horde = false }
-        end -- "mine" is the nil default
-        ns.db.browserFaction = nil
-    end
-
+local function InitClassic()
     local watcher = CreateFrame("Frame")
     watcher:RegisterEvent("ADDON_LOADED")
     watcher:RegisterEvent("TRADE_SKILL_SHOW")
@@ -1279,6 +1390,239 @@ ns.OnInit(function()
     -- before us, so the ADDON_LOADED above never fires for them
     TryHookTrade()
     TryHookCraft()
+end
+
+-- ---- WoW Forever: ProfessionsFrame (Blizzard_Professions)
+--
+-- Forever replaced the trade skill window with Retail's profession
+-- window: one frame for every profession, a column of profession tabs on
+-- its right edge (overview + one per profession), the crafting page
+-- (recipe list left, schematic right) below a header strip with the
+-- skill bar. Our tab joins the bottom of that column; our page covers
+-- the crafting page BELOW the header strip, so the profession's name and
+-- skill bar stay visible - the list belongs to the profession on screen.
+-- Clicking any native profession tab returns to Blizzard's view.
+
+-- Retail-style child skill lines (expansion tiers) -> classic parent line
+local FOREVER_PARENT_LINE = {
+    [2937] = 171, [2938] = 164, [2939] = 185, [2940] = 333, [2941] = 202,
+    [2942] = 129, [2945] = 165, [2946] = 186, [2948] = 197,
+}
+
+local function ProfessionBySkillLine(line)
+    line = FOREVER_PARENT_LINE[line] or line
+    for _, prof in ipairs(Professions()) do
+        if prof.skillLine == line and ns[prof.recipes] then return prof end
+    end
+end
+ns.BrowserProfessionBySkillLine = ProfessionBySkillLine -- exposed for tests
+
+local function SafeCall(fn, ...)
+    if not fn then return nil end
+    local ok, a = pcall(fn, ...)
+    if ok then return a end
+end
+
+local function ForeverResolve()
+    local tsui = C_TradeSkillUI
+    if not tsui then return nil end
+    -- someone else's linked / guild profession, NPC crafting: not ours
+    if SafeCall(tsui.IsTradeSkillLinked) or SafeCall(tsui.IsTradeSkillGuild)
+        or SafeCall(tsui.IsNPCCrafting) then
+        return nil
+    end
+    local base = SafeCall(tsui.GetBaseProfessionInfo)
+    -- _G: RecipeBrowser's own local Professions() shadows Blizzard's table
+    local blizz = _G.Professions
+    local line = blizz and SafeCall(blizz.GetEffectiveSkillLineID)
+    if not line or line == 0 then line = base and base.professionID end
+    local prof = line and ProfessionBySkillLine(line)
+    if not prof then return nil end
+    local rank, maxRank
+    local info = C_SkillInfo and SafeCall(C_SkillInfo.GetSkillLineInfoByID, prof.skillLine)
+    if info and (info.maxRank or 0) > 0 then
+        rank, maxRank = info.rank, info.maxRank
+    elseif base then
+        rank, maxRank = base.skillLevel, base.maxSkillLevel
+    end
+    return prof, rank, maxRank
+end
+ns.BrowserForeverResolve = ForeverResolve -- exposed for tests
+
+local function PaintProfession(o)
+    -- the profession window's own background, darkened for legible rows;
+    -- marble if the atlas ever goes away
+    if o.bg.SetAtlas and o.bg:SetAtlas("Profession-Background-Overview") then
+        o.bg:SetHorizTile(false)
+        o.bg:SetVertTile(false)
+        o.bg:SetVertexColor(0.55, 0.55, 0.55, 1)
+    else
+        PaintMarble(o)
+    end
+end
+
+-- What's Training (by Sveng) docks its own all-professions page into the
+-- same window. Two pages over one window would stack, so each closes the
+-- other: we watch its page, and close it through its own return tab.
+local function CloseWhatsTraining()
+    local page, back = _G.WhatsTrainingCraftingPage, _G.WhatsTrainingCraftingReturnTab
+    if page and page:IsShown() and back and back.customMouseUpHandler then
+        pcall(back.customMouseUpHandler, back, "LeftButton", true)
+    end
+end
+
+local function HookForever()
+    local book = ProfessionsFrame
+    if not book or hosts[book] or not book.CraftingPage then return end
+    local page = book.CraftingPage
+
+    local tab = CreateFrame("Frame", "ProfessionTipsProfessionsTab", book, "LargeSideTabButtonTemplate")
+    tab:Hide()
+    tab:EnableMouse(true)
+    tab.Icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    tab:SetFillToInterior(true)
+    tab:SetChecked(false)
+    tab.tooltipText = L["Available & upcoming recipes"]
+    tab:SetCustomOnMouseUpHandler(function(_, button, upInside)
+        if button == "LeftButton" and upInside then ToggleHost(book) end
+    end)
+
+    hosts[book] = {
+        tab = tab,
+        resolve = ForeverResolve,
+        available = function()
+            -- the crafting page of a profession, not the overview book,
+            -- and not the minimized (recipe-only) layout
+            return book:IsShown() and page:IsShown()
+                and not (book.BookPage and book.BookPage:IsShown())
+                and not (ProfessionsUtil and SafeCall(ProfessionsUtil.IsCraftingMinimized))
+        end,
+        position = function()
+            -- below the last profession tab shown in the right-edge column
+            local last = book.ProfessionsOverviewTab
+            for _, t in ipairs(book.rightProfessionTabs or {}) do
+                if t:IsShown() then last = t end
+            end
+            tab:ClearAllPoints()
+            if last then
+                tab:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -14)
+            else
+                tab:SetPoint("TOPLEFT", book, "TOPRIGHT", 0, -60)
+            end
+        end,
+        isWide = function() return true end,
+        fallbackWidth = function(h) return (h:GetWidth() or 750) - 12 end,
+        attach = function(o, h)
+            PaintProfession(o)
+            o:SetParent(h)
+            o:SetFrameStrata(h:GetFrameStrata())
+            o:ClearAllPoints()
+            -- below the header strip (skill bar, tool slots), the area of
+            -- the recipe list + schematic (RecipeList sits at 5,-72)
+            o:SetPoint("TOPLEFT", page, "TOPLEFT", 4, -70)
+            o:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -4, 4)
+            o:SetFrameLevel(math.min(page:GetFrameLevel() + 400, 9000))
+        end,
+        onShow = CloseWhatsTraining,
+    }
+
+    -- What's Training's page opening closes ours (looked up lazily: it
+    -- may build its page after us)
+    local wtHooked = false
+    local function refresh()
+        local wtPage = _G.WhatsTrainingCraftingPage
+        if not wtHooked and wtPage then
+            wtHooked = true
+            wtPage:HookScript("OnShow", function()
+                if hosts[book].open then HideBrowser() end
+            end)
+        end
+        Guarded(UpdateHost, book)
+    end
+    -- deferred one frame: Blizzard switches pages / tabs in the same
+    -- handlers that fire these callbacks
+    local queued = false
+    local function request()
+        if queued then return end
+        queued = true
+        C_Timer.After(0, function()
+            queued = false
+            refresh()
+        end)
+    end
+    local function closeAndRefresh()
+        if hosts[book].open then HideBrowser() end
+        request()
+    end
+
+    if EventRegistry and EventRegistry.RegisterCallback then
+        EventRegistry:RegisterCallback("ProfessionsFrame.Show", request, tab)
+        EventRegistry:RegisterCallback("ProfessionsFrame.Hide", function() HideBrowser() end, tab)
+        EventRegistry:RegisterCallback("Professions.ProfessionSelected", request, tab)
+    end
+    book:HookScript("OnHide", function() HideBrowser() end)
+    page:HookScript("OnShow", request)
+    page:HookScript("OnHide", request)
+    if book.BookPage then book.BookPage:HookScript("OnShow", closeAndRefresh) end
+    -- any native profession tab = back to Blizzard's own view
+    local native = { book.ProfessionsOverviewTab }
+    for _, t in ipairs(book.rightProfessionTabs or {}) do native[#native + 1] = t end
+    for _, t in ipairs(native) do
+        t:HookScript("OnMouseUp", function(_, button)
+            if button == "LeftButton" and hosts[book].open then HideBrowser() end
+        end)
+    end
+
+    local events = CreateFrame("Frame")
+    for _, event in ipairs({ "SKILL_LINES_CHANGED", "NEW_RECIPE_LEARNED",
+        "TRADE_SKILL_LIST_UPDATE", "SPELLS_CHANGED" }) do
+        pcall(events.RegisterEvent, events, event)
+    end
+    events:SetScript("OnEvent", function()
+        if book:IsShown() then request() end
+    end)
+    request()
+end
+
+local function InitForever()
+    if ProfessionsFrame then
+        HookForever()
+        return
+    end
+    local watcher = CreateFrame("Frame")
+    watcher:RegisterEvent("ADDON_LOADED")
+    watcher:SetScript("OnEvent", function(self, _, name)
+        if name == "Blizzard_Professions" then
+            self:UnregisterEvent("ADDON_LOADED")
+            -- What's Training hooks the same addon load; let it finish so
+            -- its page exists when we look for it
+            C_Timer.After(0, HookForever)
+        end
+    end)
+end
+
+-- ---------------------------------------------------------------- init
+
+ns.OnInit(function()
+    -- one-time migration of the old mine/all/neutral cycle setting to
+    -- the per-faction checkboxes (2026-08-06)
+    local old = ns.db.browserFaction
+    if old ~= nil then
+        if old == "all" then
+            ns.db.browserFactions = { Alliance = true, Horde = true }
+        elseif old == "neutral" then
+            ns.db.browserFactions = { Alliance = false, Horde = false }
+        end -- "mine" is the nil default
+        ns.db.browserFaction = nil
+    end
+
+    if ns.isForever then
+        -- no TradeSkillFrame / CraftFrame there (and CRAFT_* registration
+        -- throws): the browser docks into the Retail profession window
+        InitForever()
+    else
+        InitClassic()
+    end
 end)
 
 -- options callback: hide the tabs (and the open browser) when disabled

@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.7.0 (2026-11-26)
+
+- **WoW: Forever support** (client 1.60.1): reagent tooltips now work on
+  Forever with its own recipe data, read from the Forever client data -
+  2,150 recipes, including the ~930 recipes Forever added (new gear,
+  potions, camp crafts and more) and the recipes it moved between
+  professions (healing potions and poultices in First Aid, Wildthorn
+  Mail and the Timbermaw belts in Leatherworking).
+- Skill-up colors use Forever's own breakpoints - many recipes turn
+  yellow, green and gray at different skill levels than on Classic Era,
+  and many trainer recipes can be learned earlier.
+- **Recipe browser on Forever**: a new side tab under the profession tabs
+  of Forever's profession window lists every recipe of the open
+  profession - available now, coming up and known - with where to get
+  it: trainer cost, vendors with their zone, Merchant's Favor and
+  reputation requirements, quests and drops. Same filters as on Classic
+  (source kinds, faction, known recipes, search).
+- Forever recipe sources are based on What's Training's Forever recipe
+  data (MIT License, see LICENSE.md).
+- Fixed (all versions): **Tin Ore / Tin Bar** showed no Blacksmithing or
+  Engineering recipes - Tin Bar is only used to smelt Bronze. Tin and
+  **Copper** now also list the recipes reachable via their **Bronze Bar**.
+
 ## v1.6.0 (2026-08-16)
 
 - New: reagent tooltips follow **branching** processing chains — one

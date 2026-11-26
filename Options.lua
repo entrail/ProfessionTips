@@ -9,7 +9,9 @@ local L = ns.L
 
 ns.OnInit(function()
     local category, layout = Settings.RegisterVerticalLayoutCategory(ADDON_NAME)
-    category.ID = ADDON_NAME
+    -- Forever (Retail engine) guards category.ID behind a secure delegate:
+    -- writing it there errors; :GetID() works on every client
+    if not ns.isForever then category.ID = ADDON_NAME end
     ns.settingsCategory = category
 
     local function AddHeader(text)
@@ -23,7 +25,7 @@ ns.OnInit(function()
 
     for _, prof in ipairs(ns.ProfessionTips.PROFESSIONS) do
         if ns[prof.recipes] then -- only professions with data on this flavor
-            local profName = GetSpellInfo(prof.skillSpell) or prof.dbKey
+            local profName = ns.api.GetSpellName(prof.skillSpell) or prof.dbKey
             local setting = Settings.RegisterAddOnSetting(
                 category,
                 "ProfessionTips_" .. prof.dbKey,
@@ -131,6 +133,8 @@ ns.OnInit(function()
             L["Also annotates reagents of professions this character does not have (as if at skill 0) - useful to decide what to keep or send to alts."])
     end
 
+    -- the browser docks into the classic trade skill / craft windows, and on
+    -- Forever into the Retail profession window
     do
         local setting = Settings.RegisterAddOnSetting(
             category,

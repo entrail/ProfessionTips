@@ -11,6 +11,7 @@ local buildMocks = dofile(base .. "tests/wow_mock.lua")
 
 local COMMON_HEAD = {
     "Core.lua",
+    "Compat.lua",
     "Locales/deDE.lua",
     "Locales/frFR.lua",
     "Locales/esES.lua",
@@ -20,6 +21,7 @@ local COMMON_HEAD = {
 local COMMON_TAIL = {
     "Data/ProductData.lua",
     "Data/FactionData.lua",
+    -- Data/Forever/*Sources.lua go here (they extend ns.CRAFT_PRODUCT)
     "Options.lua",
     "ProfessionTips.lua",
     "RecipeBrowser.lua",
@@ -49,19 +51,50 @@ local DATA = {
         "Data/TBC/JewelcraftingSources.lua", "Data/TBC/LeatherworkingSources.lua",
         "Data/TBC/SmeltingSources.lua", "Data/TBC/TailoringSources.lua",
     },
+    Forever = {
+        "Data/Forever/AlchemyData.lua", "Data/Forever/BlacksmithingData.lua",
+        "Data/Forever/CookingData.lua", "Data/Forever/EnchantingData.lua",
+        "Data/Forever/EngineeringData.lua", "Data/Forever/FirstAidData.lua",
+        "Data/Forever/LeatherworkingData.lua", "Data/Forever/SmeltingData.lua",
+        "Data/Forever/TailoringData.lua",
+    },
 }
+-- after ProductData/FactionData, like in both Forever-capable tocs
+local LATE = {
+    Forever = {
+        "Data/Forever/AlchemySources.lua", "Data/Forever/BlacksmithingSources.lua",
+        "Data/Forever/CookingSources.lua", "Data/Forever/EnchantingSources.lua",
+        "Data/Forever/EngineeringSources.lua", "Data/Forever/FirstAidSources.lua",
+        "Data/Forever/LeatherworkingSources.lua", "Data/Forever/SmeltingSources.lua",
+        "Data/Forever/TailoringSources.lua",
+    },
+}
+-- plain ProfessionTips.toc (read by a client without a matching flavor
+-- toc): the Vanilla data, then the self-guarding Forever data on top
+local PLAIN = {}
+for _, f in ipairs(DATA.Vanilla) do PLAIN[#PLAIN + 1] = f end
+for _, f in ipairs(DATA.Forever) do PLAIN[#PLAIN + 1] = f end
 
--- boot("Vanilla"|"TBC", setup?) -> { ns, m, env }; setup(m) runs before
--- the files load, so tests can shape pre-login state.
-local function boot(flavor, setup)
+-- boot("Vanilla"|"TBC"|"Forever", setup?, plainToc?) -> { ns, m, env };
+-- setup(m) runs before the files load, so tests can shape pre-login state.
+-- "Forever" reshapes the mock into the Forever client API first; plainToc
+-- loads the plain ProfessionTips.toc file list instead of the flavor toc.
+local function boot(flavor, setup, plainToc)
     local m = buildMocks()
     local ns = {}
     local env = Loader.newEnv(m)
+    if flavor == "Forever" then m.ApplyForever() end
     if setup then setup(m) end
     local files = {}
     for _, f in ipairs(COMMON_HEAD) do files[#files + 1] = f end
-    for _, f in ipairs(DATA[flavor or "Vanilla"]) do files[#files + 1] = f end
-    for _, f in ipairs(COMMON_TAIL) do files[#files + 1] = f end
+    for _, f in ipairs(plainToc and PLAIN or DATA[flavor or "Vanilla"]) do files[#files + 1] = f end
+    local late = (plainToc or flavor == "Forever") and LATE.Forever or {}
+    for _, f in ipairs(COMMON_TAIL) do
+        if f == "Options.lua" then
+            for _, l in ipairs(late) do files[#files + 1] = l end
+        end
+        files[#files + 1] = f
+    end
     Loader.loadAll(base, files, ns, env)
     m.Fire("ADDON_LOADED", "ProfessionTips")
     return { ns = ns, m = m, env = env }
@@ -91,6 +124,7 @@ local SUITE_FILES = {
     "test_sources.lua",
     "test_browser.lua",
     "test_locales.lua",
+    "test_forever.lua",
 }
 for _, s in ipairs(SUITE_FILES) do
     currentSuite = s

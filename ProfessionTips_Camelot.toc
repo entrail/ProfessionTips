@@ -1,0 +1,39 @@
+## Interface: 16001
+## Title: ProfessionTips
+## Notes: Reagent tooltips: which recipes use an item, the skill range that still gives points, and whether you know the recipe.
+## Author: Entrail09
+## Version: 1.7.0
+## SavedVariables: ProfessionTipsDB
+## X-Curse-Project-ID: 1612251
+
+Core.lua
+Compat.lua
+Locales\deDE.lua
+Locales\frFR.lua
+Locales\esES.lua
+Locales\ptBR.lua
+Locales\ruRU.lua
+Templates.xml
+Data\Forever\AlchemyData.lua
+Data\Forever\BlacksmithingData.lua
+Data\Forever\CookingData.lua
+Data\Forever\EnchantingData.lua
+Data\Forever\EngineeringData.lua
+Data\Forever\FirstAidData.lua
+Data\Forever\LeatherworkingData.lua
+Data\Forever\SmeltingData.lua
+Data\Forever\TailoringData.lua
+Data\ProductData.lua
+Data\FactionData.lua
+Data\Forever\AlchemySources.lua
+Data\Forever\BlacksmithingSources.lua
+Data\Forever\CookingSources.lua
+Data\Forever\EnchantingSources.lua
+Data\Forever\EngineeringSources.lua
+Data\Forever\FirstAidSources.lua
+Data\Forever\LeatherworkingSources.lua
+Data\Forever\SmeltingSources.lua
+Data\Forever\TailoringSources.lua
+Options.lua
+ProfessionTips.lua
+RecipeBrowser.lua
