@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.8.0 (2026-11-28)
+
+- **Show gray recipes** (new per-profession option, off by default):
+  recipes that no longer give skill points are listed in gray in the
+  lines left free after the ones that still do; any that do not fit are
+  counted as "+N more gray recipes". When every recipe of an item is
+  gray (e.g. at max skill), the section lists them instead of the single
+  "no skillups" line. Gray lines skip the skill range to stay short; the
+  new "Skill range on gray recipes" option brings it back (useful when
+  collecting materials for an alt).
+- **"All professions" switches** for "Only learned recipes" and "Show
+  gray recipes" at the top of the profession list: while one is on, it
+  applies everywhere and the per-profession boxes are shown checked and
+  locked (your individual choices come back when you turn it off).
+- "Recipes listed per profession" now goes up to the most recipes a
+  single material is used in on your client (79 on Classic Era, 106 on
+  TBC, 144 on WoW Forever) instead of 35.
+
 ## v1.7.0 (2026-11-26)
 
 - **WoW: Forever support** (client 1.60.1): reagent tooltips now work on

@@ -207,6 +207,7 @@ end
 -- into. Recipes locked to the other faction are excluded everywhere (this
 -- character can never use them). Returns:
 --   candidates   - non-gray, faction-ok {spellId, via}, sorted by req skill
+--   grays        - the gray faction-ok ones, same shape and order
 --   anyRecipe    - the item is a reagent at all (even if only other-faction)
 --   anyAvailable - at least one faction-ok recipe exists
 --   range        - ACCUMULATED breakpoints over ALL faction-ok recipes
@@ -215,9 +216,9 @@ end
 --                  while leveling you craft whichever recipe is best.
 local function GatherCandidates(prof, itemId, skill)
     local recipes, index = ns[prof.recipes], ns[prof.byReagent]
-    if not recipes or not index then return nil, false, false, nil end
+    if not recipes or not index then return nil, nil, false, false, nil end
 
-    local out, seen = {}, {}
+    local out, grays, seen = {}, {}, {}
     local anyRecipe, anyAvailable = false, false
     local lockedTo -- faction of excluded recipes (always the opposite one)
     local range
@@ -251,8 +252,11 @@ local function GatherCandidates(prof, itemId, skill)
                             if r.green  > range.green  then range.green  = r.green  end
                             if r.gray   > range.gray   then range.gray   = r.gray   end
                         end
+                        local cand = { spellId = spellId, via = via }
                         if skill < r.gray then
-                            out[#out + 1] = { spellId = spellId, via = via }
+                            out[#out + 1] = cand
+                        else
+                            grays[#grays + 1] = cand
                         end
                     end
                 end
@@ -272,15 +276,65 @@ local function GatherCandidates(prof, itemId, skill)
         end
     end
 
-    table.sort(out, function(a, b)
+    local function byReq(a, b)
         return recipes[a.spellId].orange < recipes[b.spellId].orange
-    end)
-    return out, anyRecipe, anyAvailable, range, lockedTo
+    end
+    table.sort(out, byReq)
+    table.sort(grays, byReq)
+    return out, grays, anyRecipe, anyAvailable, range, lockedTo
+end
+
+-- Upper bound for the "Recipes listed per profession" slider: the most
+-- recipes a single item reaches in one profession (conversions included,
+-- both factions, every skill level) in the catalogue loaded on this
+-- client - Runecloth -> Tailoring is the record on Era (79), TBC (81;
+-- Heavy Knothide Leather -> Leatherworking 106) and Forever (144).
+function module.MaxRecipesPerItem()
+    local best = 0
+    for _, prof in ipairs(PROFESSIONS) do
+        local index = ns[prof.byReagent]
+        if index then
+            local starts = {}
+            for id in pairs(index) do starts[id] = true end
+            for id in pairs(CONVERSIONS) do starts[id] = true end
+            for start in pairs(starts) do
+                local seen, count = {}, 0
+                local queue, visited, qi = { start }, { [start] = true }, 1
+                while queue[qi] do
+                    local id = queue[qi]
+                    qi = qi + 1
+                    for _, spellId in ipairs(index[id] or {}) do
+                        if not seen[spellId] then
+                            seen[spellId] = true
+                            count = count + 1
+                        end
+                    end
+                    local nxt = CONVERSIONS[id]
+                    if type(nxt) == "number" then nxt = { nxt } end
+                    for _, n in ipairs(nxt or {}) do
+                        if not visited[n] then
+                            visited[n] = true
+                            queue[#queue + 1] = n
+                        end
+                    end
+                end
+                if count > best then best = count end
+            end
+        end
+    end
+    return best
+end
+
+-- Per-profession sub-option, overridden by its "all professions" master
+-- (allOnlyLearned / allShowGray).
+local function ProfOption(prof, suffix)
+    return ns.db["all" .. suffix] or ns.db[prof.dbKey .. suffix]
 end
 
 local function AddRecipeLine(tooltip, skill, cand, recipe, hasProfession)
     local name = ns.api.GetSpellName(cand.spellId) or ("#" .. cand.spellId)
-    local color = DIFFICULTY_COLOR[DifficultyAt(skill, recipe)]
+    local difficulty = DifficultyAt(skill, recipe)
+    local color = DIFFICULTY_COLOR[difficulty]
 
     local left = ("  |c%s%s|r"):format(color, name)
     if cand.via then
@@ -292,6 +346,12 @@ local function AddRecipeLine(tooltip, skill, cand, recipe, hasProfession)
         left = left .. (" |cffff5050(%s)|r"):format(L["not learned"])
     end
 
+    -- Gray rows skip the scale unless "Skill range on gray recipes" is on
+    -- (it only matters when collecting materials for a lower alt).
+    if difficulty == "gray" and not ns.db.grayScale then
+        tooltip:AddLine(left)
+        return
+    end
     tooltip:AddDoubleLine(left,
         FormatScale(recipe.orange, recipe.yellow, recipe.green, recipe.gray))
 end
@@ -308,8 +368,31 @@ local function AddProfessionLines(tooltip, prof, itemId)
         skill = 0
     end
 
-    local candidates, anyRecipe, anyAvailable, range, lockedTo = GatherCandidates(prof, itemId, skill)
+    local candidates, grays, anyRecipe, anyAvailable, range, lockedTo = GatherCandidates(prof, itemId, skill)
     if not anyRecipe then return end
+
+    -- The per-profession "only learned" filter trims the recipe LINES
+    -- only; unlearned recipes stay in the header range and the "+N more"
+    -- counts. Meaningless without the profession (nothing is learned), so
+    -- it only applies on characters that have it.
+    local onlyLearned = hasProfession and ProfOption(prof, "OnlyLearned")
+    local function Learned(list)
+        if not onlyLearned then return list end
+        local pool = {}
+        for _, cand in ipairs(list) do
+            if ns.api.IsSpellKnown(cand.spellId) then pool[#pool + 1] = cand end
+        end
+        return pool
+    end
+
+    -- Per-profession "show gray recipes": gray recipes fill the line slots
+    -- the non-gray ones leave free (never displace them), and an all-gray
+    -- section lists them instead of collapsing to "no skillups".
+    local maxLines = MaxLines()
+    local grayPool = {}
+    if ProfOption(prof, "ShowGray") and maxLines > 0 then
+        grayPool = Learned(grays)
+    end
 
     -- Emphasizes the just-added line's left text with the tooltip header
     -- font ("bold"). Tooltip fontstrings are recycled between tooltips, so
@@ -339,7 +422,7 @@ local function AddProfessionLines(tooltip, prof, itemId)
         return
     end
 
-    if #candidates == 0 then
+    if #candidates == 0 and #grayPool == 0 then
         -- Every available recipe is gray: one clear "sell it" line.
         tooltip:AddDoubleLine(
             ("|c%s%s|r"):format(DIFFICULTY_COLOR.gray, prof.name),
@@ -353,33 +436,30 @@ local function AddProfessionLines(tooltip, prof, itemId)
     -- material's ACCUMULATED skill range on the right. Always shown, and
     -- the range always covers unlearned recipes too - it describes what is
     -- generally possible with this material.
+    -- All gray (only reachable with "show gray recipes"): the range would
+    -- be pointless, the right side says "no skillups" like the collapsed
+    -- line does.
     local header
     if hasProfession then
         header = ("|cffffd100%s (%d)|r"):format(prof.name, skill)
     else
         header = ("|cffffd100%s|r"):format(prof.name)
     end
-    tooltip:AddDoubleLine(header,
-        FormatScale(range.orange, range.yellow, range.green, range.gray))
+    if #candidates == 0 then
+        tooltip:AddDoubleLine(header,
+            ("|c%s%s|r"):format(DIFFICULTY_COLOR.gray, L["no skillups"]))
+    else
+        tooltip:AddDoubleLine(header,
+            FormatScale(range.orange, range.yellow, range.green, range.gray))
+    end
     EmphasizeLastLine()
 
     -- maxLines 0 = professions-only mode (just the header rows).
     -- 1 acts as 2: with any recipes shown, the lowest- and the
     -- highest-requirement one always appear together.
     local recipes = ns[prof.recipes]
-    local maxLines = MaxLines()
     if maxLines > 0 then
-        -- The per-profession "only learned" filter trims the recipe LINES
-        -- only; unlearned recipes stay in the header range and the "+N
-        -- more" count. Meaningless without the profession (nothing is
-        -- learned), so it only applies on characters that have it.
-        local pool = candidates
-        if hasProfession and ns.db[prof.dbKey .. "OnlyLearned"] then
-            pool = {}
-            for _, cand in ipairs(candidates) do
-                if ns.api.IsSpellKnown(cand.spellId) then pool[#pool + 1] = cand end
-            end
-        end
+        local pool = Learned(candidates)
 
         local show = pool
         if #pool > maxLines then
@@ -414,19 +494,57 @@ local function AddProfessionLines(tooltip, prof, itemId)
                 return ra.orange < rb.orange
             end)
             for _, cand in ipairs(rest) do pick(cand) end
-            table.sort(show, function(a, b)
-                return recipes[a.spellId].orange < recipes[b.spellId].orange
-            end)
         end
+
+        -- Gray recipes only take the slots left over. If they do not all
+        -- fit: learned first, then the highest requirement (the ones that
+        -- turned gray most recently).
+        local shownLive = #show
+        local free = maxLines - shownLive
+        local grayShown = 0
+        if free > 0 and #grayPool > 0 then
+            local g = grayPool
+            if #g > free then
+                g = {}
+                for _, cand in ipairs(grayPool) do g[#g + 1] = cand end
+                table.sort(g, function(a, b)
+                    if hasProfession then
+                        local la = ns.api.IsSpellKnown(a.spellId)
+                        local lb = ns.api.IsSpellKnown(b.spellId)
+                        if la ~= lb then return la end
+                    end
+                    return recipes[a.spellId].orange > recipes[b.spellId].orange
+                end)
+            end
+            if show == pool then -- copy before appending (pool is shared)
+                show = {}
+                for _, cand in ipairs(pool) do show[#show + 1] = cand end
+            end
+            for i = 1, math.min(free, #g) do
+                show[#show + 1] = g[i]
+                grayShown = grayShown + 1
+            end
+        end
+
+        table.sort(show, function(a, b)
+            return recipes[a.spellId].orange < recipes[b.spellId].orange
+        end)
 
         for _, cand in ipairs(show) do
             AddRecipeLine(tooltip, skill, cand, recipes[cand.spellId], hasProfession)
         end
         -- Counts both truncated lines and lines hidden by "only learned" -
         -- all of them are recipes that could still give points.
-        local hidden = #candidates - #show
+        local hidden = #candidates - shownLive
         if hidden > 0 then
             tooltip:AddLine(("  |cff9d9d9d+%d|r "):format(hidden) .. L["more recipes give points"])
+        end
+        -- Only with "show gray recipes" on: gray ones that did not fit.
+        if ProfOption(prof, "ShowGray") then
+            local grayHidden = #grays - grayShown
+            if grayHidden > 0 then
+                tooltip:AddLine(("  |cff9d9d9d+%d %s|r"):format(grayHidden, L["more gray recipes"]))
+            end
         end
     end
     tooltip:Show() -- recalculate tooltip size for the added lines

@@ -23,6 +23,48 @@ ns.OnInit(function()
     -- ----------------------------------------------------------------
     AddHeader(L["Professions"])
 
+    -- Per-profession sub-options with an "all professions" master switch
+    -- on top. While a master is on, every profession's row reads checked
+    -- and is greyed out (the profession's own stored value stays untouched
+    -- and comes back when the master is turned off). The rows are proxy
+    -- settings: displayed value = master OR own value.
+    local SUB_OPTIONS = {
+        {
+            suffix = "OnlyLearned",
+            label = L["Only learned recipes"],
+            tooltip = L["List only recipes this character has already learned. Unlearned recipes still count for the header's accumulated skill range and the '+N more' summary."],
+            allLabel = L["Only learned recipes (all professions)"],
+        },
+        {
+            suffix = "ShowGray",
+            label = L["Show gray recipes"],
+            tooltip = L["Also list recipes that no longer give skill points (gray), in the lines left free after the ones that still do - raise 'Recipes listed per profession' to see more of them. When every recipe is gray, they are listed instead of the single 'no skillups' line."],
+            allLabel = L["Show gray recipes (all professions)"],
+        },
+    }
+    local subVariables = {} -- suffix -> list of per-profession variables
+    for _, sub in ipairs(SUB_OPTIONS) do
+        sub.allKey = "all" .. sub.suffix
+        subVariables[sub.suffix] = {}
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            "ProfessionTips_" .. sub.allKey,
+            sub.allKey,
+            ns.db,
+            Settings.VarType.Boolean,
+            sub.allLabel,
+            false
+        )
+        Settings.CreateCheckbox(category, setting,
+            sub.tooltip .. "\n\n" .. L["Applies to every profession; the per-profession checkboxes are locked while this is on."])
+        -- the profession rows show master OR own value: re-read them
+        Settings.SetOnValueChangedCallback("ProfessionTips_" .. sub.allKey, function()
+            for _, variable in ipairs(subVariables[sub.suffix]) do
+                if Settings.NotifyUpdate then pcall(Settings.NotifyUpdate, variable) end
+            end
+        end)
+    end
+
     for _, prof in ipairs(ns.ProfessionTips.PROFESSIONS) do
         if ns[prof.recipes] then -- only professions with data on this flavor
             local profName = ns.api.GetSpellName(prof.skillSpell) or prof.dbKey
@@ -38,23 +80,40 @@ ns.OnInit(function()
             local profInitializer = Settings.CreateCheckbox(category, setting,
                 L["Adds this profession's recipes an item is used in to its tooltip, with the skill range that still gives points and whether you know the recipe."])
 
-            -- Child row: indented under the profession and greyed out while
-            -- the profession is disabled (native dependent-option look).
-            local learnedKey = prof.dbKey .. "OnlyLearned"
-            local learnedSetting = Settings.RegisterAddOnSetting(
-                category,
-                "ProfessionTips_" .. learnedKey,
-                learnedKey,
-                ns.db,
-                Settings.VarType.Boolean,
-                L["Only learned recipes"],
-                false
-            )
-            local learnedInitializer = Settings.CreateCheckbox(category, learnedSetting,
-                L["List only recipes this character has already learned. Unlearned recipes still count for the header's accumulated skill range and the '+N more' summary."])
-            learnedInitializer:SetParentInitializer(profInitializer, function()
-                return ns.db[prof.dbKey]
-            end)
+            -- Child rows: indented under the profession and greyed out while
+            -- the profession is disabled (native dependent-option look) or
+            -- while the "all professions" master of that option is on.
+            for _, sub in ipairs(SUB_OPTIONS) do
+                local key = prof.dbKey .. sub.suffix
+                local variable = "ProfessionTips_" .. key
+                local subSetting = Settings.RegisterProxySetting(
+                    category,
+                    variable,
+                    Settings.VarType.Boolean,
+                    sub.label,
+                    false,
+                    function() return ns.db[sub.allKey] or ns.db[key] or false end,
+                    function(value) ns.db[key] = value end
+                )
+                local tooltip = function()
+                    if ns.db[sub.allKey] then
+                        return sub.tooltip .. "\n\n|cffffd100"
+                            .. format(L["Turned on for all professions by '%s'."], sub.allLabel) .. "|r"
+                    end
+                    return sub.tooltip
+                end
+                local subInitializer = Settings.CreateCheckbox(category, subSetting, tooltip)
+                subInitializer:SetParentInitializer(profInitializer, function()
+                    return ns.db[prof.dbKey]
+                end)
+                subInitializer:AddModifyPredicate(function()
+                    return not ns.db[sub.allKey]
+                end)
+                -- re-evaluate the enabled state when the master toggles
+                -- (despite the name this listens to any setting variable)
+                subInitializer:AddEvaluateStateCVar("ProfessionTips_" .. sub.allKey)
+                tinsert(subVariables[sub.suffix], variable)
+            end
         end
     end
 
@@ -73,7 +132,10 @@ ns.OnInit(function()
             L["Recipes listed per profession"],
             6
         )
-        local options = Settings.CreateSliderOptions(0, 35, 1)
+        -- max = the most recipes one item reaches in one profession in the
+        -- loaded catalogue (Era 79, TBC 106, Forever 144)
+        local maxValue = math.max(35, ns.ProfessionTips.MaxRecipesPerItem())
+        local options = Settings.CreateSliderOptions(0, maxValue, 1)
         options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
             if value == 0 then return L["0 (professions only)"] end
             if value == 1 then return "2" end -- 1 acts as 2 (lowest+highest pair)
@@ -117,6 +179,20 @@ ns.OnInit(function()
         )
         Settings.CreateCheckbox(category, setting,
             L["Raw materials also show the recipes of what they are processed into (cloth into bolts, ore into bars, hides into cured hides, ...), marked with 'via'."])
+    end
+
+    do
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            "ProfessionTips_GrayScale",
+            "grayScale",
+            ns.db,
+            Settings.VarType.Boolean,
+            L["Skill range on gray recipes"],
+            false
+        )
+        Settings.CreateCheckbox(category, setting,
+            L["Gray recipe lines (see 'Show gray recipes') also show their skill range. Off keeps them short - the range only matters when you collect materials for a lower-skilled character."])
     end
 
     do

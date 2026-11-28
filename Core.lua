@@ -20,7 +20,7 @@ local defaults = {
     leatherworking = true,
     mining = true,        -- smelting
     tailoring = true,
-    maxLines = 6,         -- recipe lines per profession section (0 = headers only, else 2-35)
+    maxLines = 6,         -- recipe lines per profession section (0 = headers only, else 2..MaxRecipesPerItem)
     showMissing = false,  -- also annotate professions this character lacks
     includeProcessed = true, -- follow cloth->bolt / ore->bar conversions
     modifier = "NONE",    -- only show while holding NONE/SHIFT/CTRL/ALT
@@ -48,6 +48,22 @@ local defaults = {
     leatherworkingOnlyLearned = false,
     miningOnlyLearned = false,
     tailoringOnlyLearned = false,
+    -- "all professions" masters for the two per-profession sub-options
+    -- (on = every profession behaves as if its own box were checked)
+    allOnlyLearned = false,
+    allShowGray = false,
+    grayScale = false,    -- gray recipe rows also show their skill range
+    -- per profession: also list gray recipes in the slots left free
+    alchemyShowGray = false,
+    blacksmithingShowGray = false,
+    cookingShowGray = false,
+    enchantingShowGray = false,
+    engineeringShowGray = false,
+    firstAidShowGray = false,
+    jewelcraftingShowGray = false,
+    leatherworkingShowGray = false,
+    miningShowGray = false,
+    tailoringShowGray = false,
 }
 
 local function CopyDefaults(src, dst)

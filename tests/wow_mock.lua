@@ -235,13 +235,65 @@ return function()
             return nil
         end })
     end
+    -- Settings and checkboxes are recorded so tests can drive the panel:
+    -- M.settings[variable] = setting (GetValue/SetValue fire the value-
+    -- changed callbacks like SettingsCallbackRegistry), M.checkboxes
+    -- [variable] = initializer (tooltip, parent + modify predicates,
+    -- evaluate-state variables); M.CheckboxEnabled(variable) evaluates
+    -- the predicates like SettingsControlMixin:IsEnabled.
+    M.settings, M.checkboxes, M.settingCallbacks = {}, {}, {}
+    local function fireSetting(variable, setting, value)
+        for _, cb in ipairs(M.settingCallbacks[variable] or {}) do cb(nil, setting, value) end
+    end
+    local function newSetting(variable, getValue, setValue)
+        local s = { variable = variable }
+        function s:GetVariable() return variable end
+        function s:GetValue() return getValue() end
+        function s:SetValue(v) setValue(v); fireSetting(variable, s, getValue()) end
+        function s:NotifyUpdate() fireSetting(variable, s, getValue()) end
+        M.settings[variable] = s
+        return s
+    end
+    function M.CheckboxEnabled(variable)
+        for _, pred in ipairs(M.checkboxes[variable].predicates) do
+            if not pred() then return false end
+        end
+        return true
+    end
     M.Settings = {
         RegisterVerticalLayoutCategory = function()
             return {}, { AddInitializer = function() end }
         end,
-        RegisterAddOnSetting = function() return {} end,
-        SetOnValueChangedCallback = function() end,
-        CreateCheckbox = function() return stubInitializer() end,
+        RegisterAddOnSetting = function(_, variable, key, tbl, _, _, default)
+            if tbl[key] == nil then tbl[key] = default end
+            return newSetting(variable, function() return tbl[key] end,
+                function(v) tbl[key] = v end)
+        end,
+        RegisterProxySetting = function(_, variable, _, _, _, getValue, setValue)
+            return newSetting(variable, getValue, setValue)
+        end,
+        GetSetting = function(variable) return M.settings[variable] end,
+        NotifyUpdate = function(variable)
+            local s = M.settings[variable]
+            if s then s:NotifyUpdate() end
+        end,
+        SetOnValueChangedCallback = function(variable, cb)
+            M.settingCallbacks[variable] = M.settingCallbacks[variable] or {}
+            table.insert(M.settingCallbacks[variable], cb)
+        end,
+        CreateCheckbox = function(_, setting, tooltip)
+            local init = setmetatable(
+                { setting = setting, tooltip = tooltip, predicates = {}, evalVars = {} },
+                getmetatable(stubInitializer()))
+            function init:SetParentInitializer(parent, pred)
+                self.parent = parent
+                if pred then table.insert(self.predicates, pred) end
+            end
+            function init:AddModifyPredicate(pred) table.insert(self.predicates, pred) end
+            function init:AddEvaluateStateCVar(v) table.insert(self.evalVars, v) end
+            if setting and setting.variable then M.checkboxes[setting.variable] = init end
+            return init
+        end,
         CreateControlTextContainer = function()
             return { Add = function() end, GetData = function() return {} end }
         end,

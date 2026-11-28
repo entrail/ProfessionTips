@@ -121,6 +121,7 @@ local SUITE_FILES = {
     "test_data.lua",
     "test_faction.lua",
     "test_tooltip.lua",
+    "test_options.lua",
     "test_sources.lua",
     "test_browser.lua",
     "test_locales.lua",

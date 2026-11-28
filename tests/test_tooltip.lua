@@ -176,3 +176,98 @@ test("tooltip: vendor reagent shows nothing (kept out of the index)", function()
     end)
     assertEqual(#B.m.HoverItem(2678), 0, "Mild Spices must stay clean")
 end)
+
+-- "Show gray recipes" (per profession, off by default): gray recipes fill
+-- the slots the live ones leave free; an all-gray section lists them.
+local GRAY = "|cff9d9d9d"
+
+test("tooltip: gray recipes hidden by default, listed with show-gray", function()
+    local B = firstAidChar(70) -- 3275 gray (60), 3276 still yellow (75)
+    B.m.HoverItem(2589)
+    local text = B.m.TooltipText()
+    assertTrue(text:find("Spell3276") ~= nil, "live recipe: " .. text)
+    assertTrue(text:find("Spell3275") == nil, "gray hidden by default: " .. text)
+
+    B.ns.db.firstAidShowGray = true
+    local lines = B.m.HoverItem(2589)
+    assertEqual(#lines, 3, "header + live + gray")
+    assertTrue(lines[2].left:find(GRAY .. "Spell3275") ~= nil, "gray row sorted first: " .. lines[2].left)
+    assertTrue(lines[3].left:find("Spell3276") ~= nil, lines[3].left)
+end)
+
+test("tooltip: all gray + show-gray lists the recipes instead of collapsing", function()
+    local B = firstAidChar(300)
+    B.ns.db.firstAidShowGray = true
+    local lines = B.m.HoverItem(2589)
+    assertEqual(#lines, 3, "header + 2 gray rows")
+    assertTrue(lines[1].left:find("Spell3273 %(300%)") ~= nil, "header with skill: " .. lines[1].left)
+    assertTrue(lines[1].right:find("no skillups") ~= nil, "no range on an all-gray header")
+    assertTrue(lines[2].left:find(GRAY .. "Spell3275") ~= nil, lines[2].left)
+    assertTrue(lines[3].left:find(GRAY .. "Spell3276") ~= nil, lines[3].left)
+
+    B.ns.db.maxLines = 0 -- professions-only mode keeps the collapsed line
+    assertEqual(#B.m.HoverItem(2589), 1, "maxLines 0 collapses")
+    B.ns.db.maxLines = 6
+    B.ns.db.firstAidOnlyLearned = true -- nothing learned -> nothing to list
+    assertEqual(#B.m.HoverItem(2589), 1, "only-learned with no learned gray collapses")
+end)
+
+test("tooltip: gray recipes only take the free slots, rest counted", function()
+    local B = T.boot("Vanilla", function(m)
+        m.state.skillLines = { { name = "Spell3908", rank = 100 } } -- Tailoring
+    end)
+    local live, gray = 0, 0
+    for _, id in ipairs(B.ns.TAILORING_BY_REAGENT[2996]) do -- Bolt of Linen
+        if not B.ns.RECIPE_FACTION[id] then
+            if 100 < B.ns.TAILORING_RECIPES[id].gray then live = live + 1 else gray = gray + 1 end
+        end
+    end
+    assertTrue(live >= 2 and gray >= 3, ("anchor needs a mix (live %d, gray %d)"):format(live, gray))
+    B.ns.db.tailoringShowGray = true
+    B.ns.db.maxLines = live + 1
+    local lines = B.m.HoverItem(2996)
+    local grayRows, liveRows = 0, 0
+    for i = 2, #lines do
+        if lines[i].left:find("^  " .. GRAY .. "Spell") then grayRows = grayRows + 1
+        elseif lines[i].left:find("^  |c%x+Spell") then liveRows = liveRows + 1 end
+    end
+    assertEqual(liveRows, live, "every live recipe shown")
+    assertEqual(grayRows, 1, "one free slot -> one gray row")
+    assertTrue(lines[#lines].left:find("%+" .. (gray - 1) .. " more gray recipes") ~= nil,
+        "gray overflow count: " .. lines[#lines].left)
+
+    B.ns.db.maxLines = 2 -- live recipes overflow: no gray row at all
+    lines = B.m.HoverItem(2996)
+    for i = 2, #lines do
+        assertTrue(not lines[i].left:find("^  " .. GRAY .. "Spell"), "gray displaced a live row")
+    end
+end)
+
+test("tooltip: slider bound = most recipes one item reaches per flavor", function()
+    assertEqual(T.boot("Vanilla").ns.ProfessionTips.MaxRecipesPerItem(), 79, "Era: Runecloth -> Tailoring")
+    assertEqual(T.boot("TBC").ns.ProfessionTips.MaxRecipesPerItem(), 106, "TBC: Heavy Knothide -> LW")
+    assertEqual(T.boot("Forever").ns.ProfessionTips.MaxRecipesPerItem(), 144, "Forever: Runecloth -> Tailoring")
+end)
+
+test("tooltip: gray rows hide their skill range unless grayScale is on", function()
+    local B = firstAidChar(70) -- 3275 gray, 3276 yellow
+    B.ns.db.firstAidShowGray = true
+    local lines = B.m.HoverItem(2589)
+    assertTrue(lines[2].left:find("Spell3275") ~= nil, lines[2].left)
+    assertTrue((lines[2].right or "") == "", "gray row without scale: " .. tostring(lines[2].right))
+    assertTrue((lines[3].right or ""):find("99") ~= nil, "live row keeps its scale")
+    B.ns.db.grayScale = true
+    lines = B.m.HoverItem(2589)
+    assertTrue((lines[2].right or ""):find("59") ~= nil, "gray scale on: " .. tostring(lines[2].right))
+end)
+
+test("tooltip: 'all professions' masters override the per-profession boxes", function()
+    local B = firstAidChar(70)
+    B.ns.db.allShowGray = true -- own firstAidShowGray stays false
+    assertEqual(#B.m.HoverItem(2589), 3, "master shows the gray row")
+    B.ns.db.allOnlyLearned = true
+    B.m.state.knownSpells[3275] = true
+    local lines = B.m.HoverItem(2589)
+    assertTrue(lines[2].left:find("Spell3275") ~= nil, "learned gray row kept")
+    assertTrue(B.m.TooltipText():find("Spell3276") == nil, "unlearned live row filtered by the master")
+end)
